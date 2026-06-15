@@ -5,6 +5,7 @@ pub mod cbor;
 pub mod model;
 pub mod protocol;
 pub mod runtime;
+pub mod workspace;
 
 pub use cbor::{Cbor, decode, encode};
 pub use protocol::generated::*;

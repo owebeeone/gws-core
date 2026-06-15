@@ -1,6 +1,6 @@
 # GWS Implementation Plan
 
-Status: planned
+Status: bootstrapped through Step 17
 
 Source design: `GWSDesign.md`.
 

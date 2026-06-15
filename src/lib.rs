@@ -8,6 +8,7 @@ pub mod model;
 pub mod operation;
 pub mod protocol;
 pub mod runtime;
+pub mod status;
 pub mod workspace;
 
 pub use cbor::{Cbor, decode, encode};

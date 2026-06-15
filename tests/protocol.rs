@@ -1,0 +1,218 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+use gws_core::{
+    ActionKind, AggregateStatus, EventKind, GitObjectIdentity, GwsError, GwsErrorCode,
+    MemberResponse, MemberStatus, OperationActor, OperationAttribution, OperationEvent,
+    RequestMeta, ResponseEnvelope, ResponseMeta, Severity, SourceKind, StatusRequest, decode,
+    encode,
+};
+
+fn round_trip<T>(
+    value: &T,
+    to_cbor: impl Fn(&T) -> gws_core::Cbor,
+    from_cbor: impl Fn(&gws_core::Cbor) -> T,
+) -> T {
+    from_cbor(&decode(&encode(&to_cbor(value))))
+}
+
+#[test]
+fn status_request_round_trips() {
+    let request = StatusRequest {
+        meta: RequestMeta {
+            request_id: "req-1".to_owned(),
+            schema_version: "gws.v0".to_owned(),
+            attribution: Some(attribution()),
+            ..RequestMeta::default()
+        },
+    };
+
+    assert_eq!(
+        round_trip(&request, StatusRequest::to_cbor, StatusRequest::from_cbor),
+        request
+    );
+}
+
+#[test]
+fn response_envelope_round_trips_with_member_error() {
+    let response = ResponseEnvelope {
+        meta: ResponseMeta {
+            request_id: "req-1".to_owned(),
+            schema_version: "gws.v0".to_owned(),
+            action: ActionKind::Status,
+            aggregate_status: AggregateStatus::Rejected,
+            message: Some("workspace has errors".to_owned()),
+            attribution: Some(attribution()),
+            ..ResponseMeta::default()
+        },
+        members: vec![MemberResponse {
+            member_id: "core".to_owned(),
+            member_path: "libs/core".to_owned(),
+            source_kind: SourceKind::Git,
+            status: MemberStatus::Rejected,
+            error: Some(member_error()),
+            ..MemberResponse::default()
+        }],
+        errors: vec![member_error()],
+    };
+
+    assert_eq!(
+        round_trip(
+            &response,
+            ResponseEnvelope::to_cbor,
+            ResponseEnvelope::from_cbor
+        ),
+        response
+    );
+}
+
+#[test]
+fn operation_event_round_trips_with_attribution() {
+    let event = OperationEvent {
+        operation_id: "op-1".to_owned(),
+        request_id: "req-1".to_owned(),
+        sequence: 42,
+        timestamp_ms: 1_727_000_000_000,
+        kind: EventKind::MemberFinished,
+        severity: Severity::Warn,
+        member_id: Some("core".to_owned()),
+        member_path: Some("libs/core".to_owned()),
+        message: Some("member rejected".to_owned()),
+        error: Some(member_error()),
+        attribution: Some(attribution()),
+        ..OperationEvent::default()
+    };
+
+    assert_eq!(
+        round_trip(&event, OperationEvent::to_cbor, OperationEvent::from_cbor),
+        event
+    );
+}
+
+#[test]
+fn attribution_round_trips_actor_and_git_identities_separately() {
+    let attribution = attribution();
+
+    assert_eq!(
+        round_trip(
+            &attribution,
+            OperationAttribution::to_cbor,
+            OperationAttribution::from_cbor
+        ),
+        attribution
+    );
+}
+
+#[test]
+fn error_code_wire_values_are_pinned() {
+    assert_eq!(GwsErrorCode::Ok.wire(), 0);
+    assert_eq!(GwsErrorCode::InvalidRequest.wire(), 1);
+    assert_eq!(GwsErrorCode::DivergedMember.wire(), 16);
+    assert_eq!(GwsErrorCode::AttributionDenied.wire(), 26);
+    assert_eq!(GwsErrorCode::InternalError.wire(), 29);
+}
+
+#[test]
+fn generated_protocol_is_current() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let out_dir = std::env::temp_dir().join(format!("gws-taut-gen-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&out_dir);
+
+    let status = taut_command(&root)
+        .args([
+            "gen",
+            "protocol/gws.taut.py",
+            "-o",
+            out_dir.to_str().expect("temp path is not utf-8"),
+            "-l",
+            "rust",
+            "--api-only",
+            "--with-runtime",
+        ])
+        .status()
+        .expect("failed to run taut generator");
+    assert!(status.success(), "taut generator failed");
+
+    assert_same(
+        &root.join("src/protocol/generated.rs"),
+        &out_dir.join("rust/api.rs"),
+    );
+    assert_same(&root.join("src/cbor.rs"), &out_dir.join("rust/cbor.rs"));
+
+    let status = taut_command(&root)
+        .args([
+            "corpus",
+            "protocol/gws.taut.py",
+            "-o",
+            "protocol/corpus",
+            "-l",
+            "rust",
+            "--check",
+        ])
+        .status()
+        .expect("failed to run taut corpus check");
+    assert!(status.success(), "taut corpus is stale");
+
+    fs::remove_dir_all(&out_dir).expect("failed to clean generated protocol temp dir");
+}
+
+fn attribution() -> OperationAttribution {
+    OperationAttribution {
+        actor: Some(OperationActor {
+            actor_id: "agent://gryth/dev".to_owned(),
+            display_name: Some("Gryth Agent".to_owned()),
+            email: Some("agent@example.invalid".to_owned()),
+            authority: Some("local-test".to_owned()),
+        }),
+        git_author: Some(GitObjectIdentity {
+            name: "AI Agent".to_owned(),
+            email: "agent@example.invalid".to_owned(),
+            time_ms: Some(1_727_000_000_000),
+            timezone_offset_minutes: Some(600),
+        }),
+        git_committer: Some(GitObjectIdentity {
+            name: "Workspace Bot".to_owned(),
+            email: "workspace@example.invalid".to_owned(),
+            time_ms: Some(1_727_000_000_100),
+            timezone_offset_minutes: Some(600),
+        }),
+        credential_ref: Some("cred:test".to_owned()),
+    }
+}
+
+fn member_error() -> GwsError {
+    GwsError {
+        code: GwsErrorCode::DivergedMember,
+        message: "member diverged".to_owned(),
+        member_id: Some("core".to_owned()),
+        member_path: Some("libs/core".to_owned()),
+        detail: Some("HEAD and upstream have distinct commits".to_owned()),
+    }
+}
+
+fn taut_command(root: &Path) -> Command {
+    let mut command = Command::new("python3");
+    let taut_src = root
+        .parent()
+        .expect("gws-core should have a parent")
+        .join("taut/src");
+    command
+        .current_dir(root)
+        .env("PYTHONPATH", taut_src)
+        .args(["-m", "taut.cli"]);
+    command
+}
+
+fn assert_same(committed: &Path, generated: &Path) {
+    let committed_text = fs::read_to_string(committed)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", committed.display()));
+    let generated_text = fs::read_to_string(generated)
+        .unwrap_or_else(|err| panic!("failed to read {}: {err}", generated.display()));
+    assert_eq!(
+        committed_text,
+        generated_text,
+        "{} is stale",
+        committed.display()
+    );
+}

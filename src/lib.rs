@@ -3,6 +3,7 @@
 pub mod cbor;
 
 pub mod artifact;
+pub mod git;
 pub mod model;
 pub mod operation;
 pub mod protocol;

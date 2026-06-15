@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::artifact::{
-    self, ArtifactSourceKind, DesiredRefArtifact, LockArtifact, ManifestArtifact, ManifestMember,
-    RemoteArtifact, ResolvedMemberArtifact, WorkspaceHeader,
+    self, ArtifactSourceKind, CreatedByArtifact, DesiredRefArtifact, LockArtifact,
+    ManifestArtifact, ManifestMember, RemoteArtifact, ResolvedMemberArtifact, WorkspaceHeader,
 };
 use crate::git::{GitBackend, GitHeadState, GitStatus};
 use crate::model::{ErrorCode, MemberId, ModelError, ModelResult, SourceId};
@@ -301,6 +301,96 @@ pub fn handle_init_from_sources(
     })
 }
 
+pub fn handle_snapshot(
+    start: &Path,
+    request: crate::SnapshotRequest,
+    operation_id: impl Into<String>,
+) -> ModelResult<crate::SnapshotResponse> {
+    let context = OperationRequest::Snapshot(request.clone()).context(operation_id.into())?;
+    let root = resolve_workspace_root(start, request.meta.workspace.as_ref())?;
+    let manifest = artifact::read_manifest(&root)?;
+    assert_workspace_id(&manifest, request.meta.workspace.as_ref())?;
+    let lock = artifact::read_lock(&root)?;
+    let selected = resolve_locked_selection(&manifest, &lock, request.meta.selection.as_ref())?;
+    let members = selected_member_map(&lock, &selected)?;
+    artifact::write_snapshot(
+        &root,
+        &artifact::SnapshotArtifact {
+            schema: artifact::SNAPSHOT_SCHEMA.to_owned(),
+            workspace_id: manifest.workspace.id.clone(),
+            snapshot_id: request.snapshot_id,
+            created_at: now_marker(),
+            created_by: created_by(&context),
+            selected_members: selected.clone(),
+            members: members.clone(),
+        },
+    )?;
+
+    Ok(crate::SnapshotResponse {
+        response: response_envelope(
+            context,
+            crate::AggregateStatus::Ok,
+            locked_member_responses(&manifest, &members),
+        ),
+    })
+}
+
+pub fn handle_tag(
+    start: &Path,
+    request: crate::TagRequest,
+    operation_id: impl Into<String>,
+) -> ModelResult<crate::TagResponse> {
+    let context = OperationRequest::Tag(request.clone()).context(operation_id.into())?;
+    let root = resolve_workspace_root(start, request.meta.workspace.as_ref())?;
+    let tag_path = root
+        .join(artifact::TAG_DIR)
+        .join(format!("{}.yml", request.tag_name));
+    if tag_path.exists() {
+        return Err(ModelError::new(
+            ErrorCode::TagInvalid,
+            "GWS tag already exists",
+        ));
+    }
+
+    let manifest = artifact::read_manifest(&root)?;
+    assert_workspace_id(&manifest, request.meta.workspace.as_ref())?;
+    let lock = artifact::read_lock(&root)?;
+    let selected = resolve_locked_selection(&manifest, &lock, request.meta.selection.as_ref())?;
+    let members = selected_member_map(&lock, &selected)?;
+    let tag = artifact::TagArtifact {
+        schema: artifact::TAG_SCHEMA.to_owned(),
+        workspace_id: manifest.workspace.id.clone(),
+        tag: request.tag_name,
+        created_at: now_marker(),
+        created_by: created_by(&context),
+        selected_members: selected.clone(),
+        members: members.clone(),
+    };
+    artifact::write_tag(&root, &tag).map_err(tag_error)?;
+
+    Ok(crate::TagResponse {
+        response: response_envelope(
+            context,
+            crate::AggregateStatus::Ok,
+            locked_member_responses(&manifest, &members),
+        ),
+    })
+}
+
+pub fn load_snapshot_target(
+    root: &Path,
+    snapshot_id: &str,
+) -> ModelResult<BTreeMap<String, ResolvedMemberArtifact>> {
+    Ok(artifact::read_snapshot(root, snapshot_id)?.members)
+}
+
+pub fn load_tag_target(
+    root: &Path,
+    tag_name: &str,
+) -> ModelResult<BTreeMap<String, ResolvedMemberArtifact>> {
+    Ok(artifact::read_tag(root, tag_name)?.members)
+}
+
 fn resolve_workspace_root(
     start: &Path,
     workspace: Option<&crate::WorkspaceRef>,
@@ -325,6 +415,168 @@ fn assert_workspace_id(
         }
     }
     Ok(())
+}
+
+fn resolve_locked_selection(
+    manifest: &ManifestArtifact,
+    lock: &LockArtifact,
+    selection: Option<&crate::Selection>,
+) -> ModelResult<Vec<String>> {
+    let selected = match selection {
+        None => manifest
+            .members
+            .iter()
+            .filter(|member| member.active)
+            .map(|member| member.id.clone())
+            .collect::<Vec<_>>(),
+        Some(selection) => resolve_explicit_locked_selection(manifest, selection)?,
+    };
+    for member_id in &selected {
+        if !lock.members.contains_key(member_id) {
+            return Err(ModelError::new(
+                ErrorCode::LockNotFound,
+                format!("lock record missing for member '{member_id}'"),
+            ));
+        }
+    }
+    Ok(selected)
+}
+
+fn resolve_explicit_locked_selection(
+    manifest: &ManifestArtifact,
+    selection: &crate::Selection,
+) -> ModelResult<Vec<String>> {
+    let has_filters = !selection.member_ids.is_empty() || !selection.paths.is_empty();
+    if selection.all == Some(true) {
+        if has_filters {
+            return Err(invalid(
+                "selection cannot combine all=true with member filters",
+            ));
+        }
+        return Ok(manifest
+            .members
+            .iter()
+            .filter(|member| member.active)
+            .map(|member| member.id.clone())
+            .collect());
+    }
+    if !has_filters {
+        return Err(invalid(
+            "selection must include all=true, member_ids, or paths",
+        ));
+    }
+
+    let mut selected = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for member_id in &selection.member_ids {
+        MemberId::parse_str(member_id)?;
+        let member = find_active_member_by_id(manifest, member_id)?;
+        if !seen.insert(member.id.clone()) {
+            return Err(invalid("selection resolves the same member more than once"));
+        }
+        selected.push(member.id.clone());
+    }
+    for path in &selection.paths {
+        MemberPath::parse(path)?;
+        let member = find_active_member_by_path(manifest, path)?;
+        if !seen.insert(member.id.clone()) {
+            return Err(invalid("selection resolves the same member more than once"));
+        }
+        selected.push(member.id.clone());
+    }
+    Ok(selected)
+}
+
+fn find_active_member_by_id<'a>(
+    manifest: &'a ManifestArtifact,
+    member_id: &str,
+) -> ModelResult<&'a ManifestMember> {
+    let member = manifest
+        .members
+        .iter()
+        .find(|member| member.id == member_id)
+        .ok_or_else(|| ModelError::new(ErrorCode::MemberNotFound, "member id not found"))?;
+    if member.active {
+        Ok(member)
+    } else {
+        Err(ModelError::new(
+            ErrorCode::MemberInactive,
+            "selected member is inactive",
+        ))
+    }
+}
+
+fn find_active_member_by_path<'a>(
+    manifest: &'a ManifestArtifact,
+    path: &str,
+) -> ModelResult<&'a ManifestMember> {
+    let member = manifest
+        .members
+        .iter()
+        .find(|member| member.path == path)
+        .ok_or_else(|| ModelError::new(ErrorCode::MemberNotFound, "member path not found"))?;
+    if member.active {
+        Ok(member)
+    } else {
+        Err(ModelError::new(
+            ErrorCode::MemberInactive,
+            "selected member is inactive",
+        ))
+    }
+}
+
+fn selected_member_map(
+    lock: &LockArtifact,
+    selected: &[String],
+) -> ModelResult<BTreeMap<String, ResolvedMemberArtifact>> {
+    let mut members = BTreeMap::new();
+    for member_id in selected {
+        let member = lock.members.get(member_id).ok_or_else(|| {
+            ModelError::new(
+                ErrorCode::LockNotFound,
+                format!("lock record missing for member '{member_id}'"),
+            )
+        })?;
+        members.insert(member_id.clone(), member.clone());
+    }
+    Ok(members)
+}
+
+fn locked_member_responses(
+    manifest: &ManifestArtifact,
+    members: &BTreeMap<String, ResolvedMemberArtifact>,
+) -> Vec<crate::MemberResponse> {
+    members
+        .iter()
+        .map(|(member_id, state)| {
+            let manifest_member = manifest
+                .members
+                .iter()
+                .find(|member| &member.id == member_id);
+            crate::MemberResponse {
+                member_id: member_id.clone(),
+                member_path: state.path.clone(),
+                source_kind: crate::SourceKind::Git,
+                status: crate::MemberStatus::Ok,
+                error: None,
+                planned: None,
+                state: manifest_member.map(|member| protocol_state(member, state)),
+                git_status: None,
+                lock_match: Some(crate::LockMatch::Matches),
+            }
+        })
+        .collect()
+}
+
+fn created_by(context: &crate::operation::OperationContext) -> CreatedByArtifact {
+    CreatedByArtifact {
+        actor_id: context
+            .attribution
+            .as_ref()
+            .and_then(|attribution| attribution.actor.as_ref())
+            .map(|actor| actor.actor_id.clone())
+            .unwrap_or_else(|| "unknown".to_owned()),
+    }
 }
 
 fn reject_existing_member_path(manifest: &ManifestArtifact, path: &MemberPath) -> ModelResult<()> {
@@ -548,13 +800,24 @@ fn io_error(error: std::io::Error) -> ModelError {
     ModelError::new(ErrorCode::IoError, error.to_string())
 }
 
+fn tag_error(error: ModelError) -> ModelError {
+    if matches!(
+        error.code,
+        ErrorCode::InvalidRequest | ErrorCode::TagInvalid
+    ) {
+        ModelError::new(ErrorCode::TagInvalid, error.message)
+    } else {
+        error
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use crate::artifact::{read_lock, read_manifest};
+    use crate::artifact::{read_lock, read_manifest, read_snapshot, read_tag};
     use crate::git::{Git2Backend, GitBackend};
     use crate::model::ErrorCode;
 
@@ -763,6 +1026,91 @@ mod tests {
         assert_eq!(collision.code, ErrorCode::PathCollision);
     }
 
+    #[test]
+    fn snapshot_and_tag_write_selected_member_records_with_attribution() {
+        let temp = TempDir::new("snapshot-tag");
+        let backend = Git2Backend::new();
+        handle_create_workspace(create_workspace_request(temp.path()), "op_create").unwrap();
+        handle_create_repo(
+            &backend,
+            temp.path(),
+            create_repo_request("repos/app", None, None),
+            "op_repo",
+        )
+        .unwrap();
+        let lock_before = read_lock(temp.path()).unwrap();
+
+        let snapshot_response = handle_snapshot(
+            temp.path(),
+            crate::SnapshotRequest {
+                meta: request_meta_with_actor_selection("agent://tester", &["mem_app"]),
+                snapshot_id: "snap_one".to_owned(),
+            },
+            "op_snapshot",
+        )
+        .unwrap();
+        let tag_response = handle_tag(
+            temp.path(),
+            crate::TagRequest {
+                meta: request_meta_with_actor_selection("agent://tester", &["mem_app"]),
+                tag_name: "release-one".to_owned(),
+            },
+            "op_tag",
+        )
+        .unwrap();
+
+        assert_eq!(
+            snapshot_response.response.members.single().member_id,
+            "mem_app"
+        );
+        assert_eq!(tag_response.response.members.single().member_id, "mem_app");
+        let snapshot = read_snapshot(temp.path(), "snap_one").unwrap();
+        assert_eq!(snapshot.created_by.actor_id, "agent://tester");
+        assert_eq!(snapshot.selected_members, vec!["mem_app"]);
+        assert!(snapshot.members.contains_key("mem_app"));
+        let tag = read_tag(temp.path(), "release-one").unwrap();
+        assert_eq!(tag.created_by.actor_id, "agent://tester");
+        assert!(tag.members.contains_key("mem_app"));
+        assert_eq!(read_lock(temp.path()).unwrap(), lock_before);
+    }
+
+    #[test]
+    fn duplicate_and_invalid_gws_tags_fail_cleanly() {
+        let temp = TempDir::new("tag-errors");
+        let backend = Git2Backend::new();
+        handle_create_workspace(create_workspace_request(temp.path()), "op_create").unwrap();
+        handle_create_repo(
+            &backend,
+            temp.path(),
+            create_repo_request("repos/app", None, None),
+            "op_repo",
+        )
+        .unwrap();
+        let request = crate::TagRequest {
+            meta: request_meta_with_actor_selection("agent://tester", &["mem_app"]),
+            tag_name: "release-one".to_owned(),
+        };
+        handle_tag(temp.path(), request.clone(), "op_tag").unwrap();
+
+        assert_eq!(
+            handle_tag(temp.path(), request, "op_tag").unwrap_err().code,
+            ErrorCode::TagInvalid
+        );
+        assert_eq!(
+            handle_tag(
+                temp.path(),
+                crate::TagRequest {
+                    meta: request_meta_with_actor_selection("agent://tester", &["mem_app"]),
+                    tag_name: "bad/name".to_owned(),
+                },
+                "op_tag",
+            )
+            .unwrap_err()
+            .code,
+            ErrorCode::TagInvalid
+        );
+    }
+
     fn create_workspace_request(root: &Path) -> crate::CreateWorkspaceRequest {
         crate::CreateWorkspaceRequest {
             meta: request_meta(),
@@ -832,6 +1180,29 @@ mod tests {
                 workspace_id: Some("ws_ops".to_owned()),
             }),
             ..request_meta()
+        }
+    }
+
+    fn request_meta_with_actor_selection(
+        actor_id: &str,
+        member_ids: &[&str],
+    ) -> crate::RequestMeta {
+        crate::RequestMeta {
+            selection: Some(crate::Selection {
+                all: Some(false),
+                member_ids: member_ids.iter().map(|value| (*value).to_owned()).collect(),
+                paths: Vec::new(),
+            }),
+            attribution: Some(crate::OperationAttribution {
+                actor: Some(crate::OperationActor {
+                    actor_id: actor_id.to_owned(),
+                    display_name: None,
+                    email: None,
+                    authority: None,
+                }),
+                ..Default::default()
+            }),
+            ..request_meta_with_workspace()
         }
     }
 

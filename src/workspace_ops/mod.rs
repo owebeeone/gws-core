@@ -1021,7 +1021,7 @@ fn init_source_plans(
         let path = source
             .path
             .clone()
-            .unwrap_or_else(|| format!("repos/{}", repo_name_from_url(&source.url)));
+            .unwrap_or_else(|| repo_name_from_url(&source.url));
         let member_path = MemberPath::parse(&path)?;
         paths.push(member_path.clone());
         let slug = path_slug(member_path.as_str())?;
@@ -1969,8 +1969,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(response.response.members[0].member_path, "repos/repo-a");
-        assert_eq!(response.response.members[1].member_path, "repos/repo-b");
+        assert_eq!(response.response.members[0].member_path, "repo-a");
+        assert_eq!(response.response.members[1].member_path, "repo-b");
         assert_eq!(
             response.response.members[0]
                 .planned
@@ -2030,7 +2030,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(plans[0].path.as_str(), "repos/remote");
+        assert_eq!(plans[0].path.as_str(), "remote");
         assert_eq!(plans[0].member_id, "mem_remote");
         assert_eq!(plans[0].source_id, "src_remote");
     }
@@ -2066,14 +2066,11 @@ mod tests {
             crate::AggregateStatus::Ok
         );
         assert_eq!(
-            backend
-                .head(&temp.path().join("repos/remote"))
-                .unwrap()
-                .commit,
+            backend.head(&temp.path().join("remote")).unwrap().commit,
             Some(commit.clone())
         );
         let manifest = read_manifest(temp.path()).unwrap();
-        assert_eq!(manifest.members[0].path, "repos/remote");
+        assert_eq!(manifest.members[0].path, "remote");
         assert_eq!(manifest.members[0].remotes[0].name, "origin");
         assert_eq!(
             read_lock(temp.path()).unwrap().members["mem_remote"].commit,

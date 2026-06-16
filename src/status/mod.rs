@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use crate::artifact::{self, ArtifactSourceKind, LockArtifact, ManifestArtifact, ManifestMember};
@@ -17,12 +17,6 @@ where
     B: GitBackend,
 {
     let context = OperationRequest::Status(request.clone()).context(operation_id.into())?;
-    if request.mode == Some(crate::StatusMode::Combined) {
-        return Err(ModelError::new(
-            ErrorCode::UnsupportedOperation,
-            "combined status is specified but not implemented yet",
-        ));
-    }
     let workspace_root = resolve_workspace_root(start, request.meta.workspace.as_ref())?;
     let manifest = artifact::read_manifest(&workspace_root)?;
     if let Some(expected) = request
@@ -40,15 +34,29 @@ where
 
     let lock = read_lock_optional(&workspace_root)?;
     let selected = resolve_selection(&manifest, request.meta.selection.as_ref())?;
-    let mut members = Vec::with_capacity(selected.len());
+    let mut reports = Vec::with_capacity(selected.len());
     for member in selected {
-        members.push(status_member(
+        reports.push(status_member(
             backend,
             &workspace_root,
             member,
             lock.as_ref(),
         ));
     }
+    let members = reports
+        .iter()
+        .map(|report| report.response.clone())
+        .collect::<Vec<_>>();
+    let workspace_git_status = (request.mode == Some(crate::StatusMode::Combined)).then(|| {
+        workspace_git_status(
+            &reports,
+            request.include_file_changes.unwrap_or(true),
+            request.include_branch_summary.unwrap_or(true),
+            request
+                .path_style
+                .unwrap_or(crate::StatusPathStyle::WorkspaceRelative),
+        )
+    });
 
     Ok(crate::StatusResponse {
         response: crate::ResponseEnvelope {
@@ -64,7 +72,7 @@ where
             members,
             errors: Vec::new(),
         },
-        workspace_git_status: None,
+        workspace_git_status,
     })
 }
 
@@ -196,39 +204,62 @@ fn require_active(member: &ManifestMember) -> ModelResult<()> {
     }
 }
 
+#[derive(Clone, Debug)]
+struct StatusMemberReport {
+    response: crate::MemberResponse,
+    head: Option<GitHeadState>,
+    status: Option<BackendGitStatus>,
+}
+
 fn status_member<B>(
     backend: &B,
     workspace_root: &Path,
     member: &ManifestMember,
     lock: Option<&LockArtifact>,
-) -> crate::MemberResponse
+) -> StatusMemberReport
 where
     B: GitBackend,
 {
     let source_kind = protocol_source_kind(member.source_kind);
     if member.source_kind != ArtifactSourceKind::Git {
-        return member_error(
-            member,
-            source_kind,
-            ModelError::new(
-                ErrorCode::UnsupportedSourceKind,
-                "status supports git members only",
+        return StatusMemberReport {
+            response: member_error(
+                member,
+                source_kind,
+                ModelError::new(
+                    ErrorCode::UnsupportedSourceKind,
+                    "status supports git members only",
+                ),
+                crate::MemberStatus::Rejected,
             ),
-            crate::MemberStatus::Rejected,
-        );
+            head: None,
+            status: None,
+        };
     }
 
     let member_root = workspace_root.join(&member.path);
     let head = match backend.head(&member_root) {
         Ok(head) => head,
-        Err(error) => return member_error(member, source_kind, error, crate::MemberStatus::Failed),
+        Err(error) => {
+            return StatusMemberReport {
+                response: member_error(member, source_kind, error, crate::MemberStatus::Failed),
+                head: None,
+                status: None,
+            };
+        }
     };
     let status = match backend.status(&member_root) {
         Ok(status) => status,
-        Err(error) => return member_error(member, source_kind, error, crate::MemberStatus::Failed),
+        Err(error) => {
+            return StatusMemberReport {
+                response: member_error(member, source_kind, error, crate::MemberStatus::Failed),
+                head: None,
+                status: None,
+            };
+        }
     };
 
-    crate::MemberResponse {
+    let response = crate::MemberResponse {
         member_id: member.id.clone(),
         member_path: member.path.clone(),
         source_kind,
@@ -238,7 +269,172 @@ where
         state: None,
         git_status: Some(protocol_git_status(member, &head, &status)),
         lock_match: Some(lock_match(lock, member, &head, &status)),
+    };
+    StatusMemberReport {
+        response,
+        head: Some(head),
+        status: Some(status),
     }
+}
+
+fn workspace_git_status(
+    reports: &[StatusMemberReport],
+    include_file_changes: bool,
+    include_branch_summary: bool,
+    path_style: crate::StatusPathStyle,
+) -> crate::WorkspaceGitStatus {
+    let clean = reports.iter().all(|report| {
+        report.response.status == crate::MemberStatus::Ok
+            && report.status.as_ref().is_none_or(|status| !status.is_dirty)
+    });
+    let file_changes = if include_file_changes {
+        reports
+            .iter()
+            .flat_map(|report| report_file_changes(report, path_style))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let branches = if include_branch_summary {
+        reports
+            .iter()
+            .filter_map(report_branch_status)
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let (branch_groups, branch_differences) = if include_branch_summary {
+        branch_groups_and_differences(&branches)
+    } else {
+        (Vec::new(), Vec::new())
+    };
+
+    crate::WorkspaceGitStatus {
+        clean,
+        file_changes,
+        branches,
+        branch_groups,
+        branch_differences,
+    }
+}
+
+fn report_file_changes(
+    report: &StatusMemberReport,
+    path_style: crate::StatusPathStyle,
+) -> Vec<crate::GitFileChange> {
+    let Some(status) = &report.status else {
+        return Vec::new();
+    };
+    status
+        .files
+        .iter()
+        .map(|file| {
+            let workspace_path = match path_style {
+                crate::StatusPathStyle::WorkspaceRelative => {
+                    workspace_path(&report.response.member_path, &file.path)
+                }
+                crate::StatusPathStyle::MemberRelative => file.path.clone(),
+            };
+            crate::GitFileChange {
+                member_id: report.response.member_id.clone(),
+                member_path: report.response.member_path.clone(),
+                repo_path: file.path.clone(),
+                workspace_path,
+                index_status: file.index_status.clone(),
+                worktree_status: file.worktree_status.clone(),
+                original_repo_path: file.original_path.clone(),
+            }
+        })
+        .collect()
+}
+
+fn report_branch_status(report: &StatusMemberReport) -> Option<crate::GitMemberBranchStatus> {
+    let head = report.head.as_ref()?;
+    let label = branch_label(head);
+    Some(crate::GitMemberBranchStatus {
+        member_id: report.response.member_id.clone(),
+        member_path: report.response.member_path.clone(),
+        label,
+        branch: head.branch.clone(),
+        detached: head.is_detached,
+        unborn: head.commit.is_none() && !head.is_detached,
+        head: head.commit.clone(),
+        upstream: None,
+        ahead: None,
+        behind: None,
+    })
+}
+
+fn workspace_path(member_path: &str, repo_path: &str) -> String {
+    if repo_path.is_empty() {
+        member_path.to_owned()
+    } else {
+        format!("{member_path}/{repo_path}")
+    }
+}
+
+fn branch_label(head: &GitHeadState) -> String {
+    if let Some(branch) = &head.branch {
+        branch.clone()
+    } else if let Some(commit) = &head.commit {
+        format!("detached@{}", commit.chars().take(12).collect::<String>())
+    } else {
+        "unborn".to_owned()
+    }
+}
+
+fn branch_groups_and_differences(
+    branches: &[crate::GitMemberBranchStatus],
+) -> (Vec<crate::GitBranchGroup>, Vec<crate::GitBranchDifference>) {
+    let mut by_label: BTreeMap<String, (Vec<String>, Vec<String>)> = BTreeMap::new();
+    for branch in branches {
+        let entry = by_label
+            .entry(branch.label.clone())
+            .or_insert_with(|| (Vec::new(), Vec::new()));
+        entry.0.push(branch.member_id.clone());
+        entry.1.push(branch.member_path.clone());
+    }
+
+    let groups = by_label
+        .iter()
+        .map(
+            |(label, (member_ids, member_paths))| crate::GitBranchGroup {
+                label: label.clone(),
+                member_ids: member_ids.clone(),
+                member_paths: member_paths.clone(),
+            },
+        )
+        .collect::<Vec<_>>();
+    let Some(majority) = groups.iter().max_by_key(|group| {
+        (
+            group.member_ids.len(),
+            std::cmp::Reverse(group.label.clone()),
+        )
+    }) else {
+        return (groups, Vec::new());
+    };
+    if groups.len() <= 1 {
+        return (groups, Vec::new());
+    }
+
+    let majority_label = majority.label.clone();
+    let differences = groups
+        .iter()
+        .filter(|group| group.label != majority_label)
+        .map(|group| crate::GitBranchDifference {
+            label: group.label.clone(),
+            majority_label: Some(majority_label.clone()),
+            member_ids: group.member_ids.clone(),
+            member_paths: group.member_paths.clone(),
+            message: Some(format!(
+                "{} differs from majority branch {}",
+                group.member_paths.join(", "),
+                majority_label
+            )),
+        })
+        .collect();
+
+    (groups, differences)
 }
 
 fn protocol_git_status(
@@ -442,19 +638,51 @@ mod tests {
     }
 
     #[test]
-    fn combined_status_mode_is_explicitly_unsupported_until_file_entries_exist() {
+    fn combined_status_reports_workspace_file_changes_and_branches() {
         let temp = TempDir::new("combined");
-        write_manifest(temp.path(), &manifest(vec![])).unwrap();
+        let backend = Git2Backend::new();
+        let repo_path = temp.path().join("repos/app");
+        backend.create_repo(&repo_path).unwrap();
+        let commit = commit_file(&repo_path, "README.md", "clean", "initial", &[]).unwrap();
+        fs::write(repo_path.join("README.md"), "dirty").unwrap();
+        fs::write(repo_path.join("new.txt"), "new").unwrap();
+        write_manifest(
+            temp.path(),
+            &manifest(vec![member("mem_app", "repos/app", true)]),
+        )
+        .unwrap();
+        write_lock(
+            temp.path(),
+            &lock("mem_app", "repos/app", Some(commit), false),
+        )
+        .unwrap();
         let mut request = status_request(None);
         request.mode = Some(crate::StatusMode::Combined);
         request.include_file_changes = Some(true);
         request.include_branch_summary = Some(true);
         request.path_style = Some(crate::StatusPathStyle::WorkspaceRelative);
 
-        let err =
-            handle_status(&Git2Backend::new(), temp.path(), request, "op_status").unwrap_err();
+        let response = handle_status(&backend, temp.path(), request, "op_status").unwrap();
+        let workspace_status = response.workspace_git_status.as_ref().unwrap();
 
-        assert_eq!(err.code, ErrorCode::UnsupportedOperation);
+        assert!(!workspace_status.clean);
+        assert_eq!(workspace_status.file_changes.len(), 2);
+        assert!(workspace_status.file_changes.iter().any(|change| {
+            change.member_id == "mem_app"
+                && change.repo_path == "README.md"
+                && change.workspace_path == "repos/app/README.md"
+                && change.worktree_status == "M"
+        }));
+        assert!(workspace_status.file_changes.iter().any(|change| {
+            change.member_id == "mem_app"
+                && change.repo_path == "new.txt"
+                && change.workspace_path == "repos/app/new.txt"
+                && change.worktree_status == "?"
+        }));
+        assert_eq!(workspace_status.branches.len(), 1);
+        assert_eq!(workspace_status.branches[0].label, "main");
+        assert_eq!(workspace_status.branch_groups.len(), 1);
+        assert!(workspace_status.branch_differences.is_empty());
     }
 
     #[test]

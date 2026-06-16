@@ -94,12 +94,21 @@ pub struct GitStatus {
     pub staged: usize,
     pub unstaged: usize,
     pub untracked: usize,
+    pub files: Vec<GitFileStatus>,
 }
 
 impl GitStatus {
     pub fn clean() -> Self {
         Self::default()
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitFileStatus {
+    pub path: String,
+    pub index_status: String,
+    pub worktree_status: String,
+    pub original_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -231,6 +240,9 @@ impl GitBackend for Git2Backend {
             }
             if status.contains(git2::Status::WT_NEW) {
                 out.untracked += 1;
+            }
+            if let Some(file) = git_file_status(&entry) {
+                out.files.push(file);
             }
         }
         out.is_dirty = out.staged > 0 || out.unstaged > 0 || out.untracked > 0;
@@ -448,6 +460,64 @@ fn unstaged_statuses() -> git2::Status {
         | git2::Status::WT_DELETED
         | git2::Status::WT_RENAMED
         | git2::Status::WT_TYPECHANGE
+}
+
+fn git_file_status(entry: &git2::StatusEntry<'_>) -> Option<GitFileStatus> {
+    let status = entry.status();
+    let path = entry.path().ok()?.to_owned();
+    Some(GitFileStatus {
+        path,
+        index_status: index_status_char(status).to_owned(),
+        worktree_status: worktree_status_char(status).to_owned(),
+        original_path: original_path(entry),
+    })
+}
+
+fn index_status_char(status: git2::Status) -> &'static str {
+    if status.contains(git2::Status::INDEX_NEW) {
+        "A"
+    } else if status.contains(git2::Status::INDEX_MODIFIED) {
+        "M"
+    } else if status.contains(git2::Status::INDEX_DELETED) {
+        "D"
+    } else if status.contains(git2::Status::INDEX_RENAMED) {
+        "R"
+    } else if status.contains(git2::Status::INDEX_TYPECHANGE) {
+        "T"
+    } else {
+        " "
+    }
+}
+
+fn worktree_status_char(status: git2::Status) -> &'static str {
+    if status.contains(git2::Status::WT_NEW) {
+        "?"
+    } else if status.contains(git2::Status::WT_MODIFIED) {
+        "M"
+    } else if status.contains(git2::Status::WT_DELETED) {
+        "D"
+    } else if status.contains(git2::Status::WT_RENAMED) {
+        "R"
+    } else if status.contains(git2::Status::WT_TYPECHANGE) {
+        "T"
+    } else {
+        " "
+    }
+}
+
+fn original_path(entry: &git2::StatusEntry<'_>) -> Option<String> {
+    if !entry
+        .status()
+        .intersects(git2::Status::INDEX_RENAMED | git2::Status::WT_RENAMED)
+    {
+        return None;
+    }
+    entry
+        .head_to_index()
+        .or_else(|| entry.index_to_workdir())
+        .and_then(|delta| delta.old_file().path())
+        .and_then(|path| path.to_str())
+        .map(ToOwned::to_owned)
 }
 
 fn git_error(error: git2::Error) -> ModelError {

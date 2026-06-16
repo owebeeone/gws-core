@@ -472,57 +472,132 @@ impl<'a> EventEmitter<'a> {
     }
 }
 
-/// Resolves the worker count for parallel member operations: the driver's
-/// `--jobs` value when valid, otherwise the host's available parallelism.
-pub fn resolve_concurrency(requested: Option<i64>) -> usize {
+/// Default global ceiling on concurrent member network operations (`--jobs`).
+pub const DEFAULT_JOBS: usize = 50;
+/// Default maximum concurrent connections to any one host.
+pub const DEFAULT_MAX_PER_HOST: usize = 8;
+
+/// Global ceiling on concurrent member operations: the driver's `--jobs` value
+/// when valid, otherwise [`DEFAULT_JOBS`].
+pub fn resolve_jobs(requested: Option<i64>) -> usize {
     match requested {
         Some(jobs) if jobs >= 1 => jobs as usize,
-        _ => std::thread::available_parallelism()
-            .map(|count| count.get())
-            .unwrap_or(1),
+        _ => DEFAULT_JOBS,
     }
 }
 
-/// Applies `f` to each item across up to `concurrency` scoped worker threads,
-/// returning results in input order. Workers pull from a shared index, so a
-/// slow item does not stall the others. `f` runs concurrently, so anything it
-/// borrows (sink, backend, workspace root) must be `Sync`.
-pub fn par_map<T, R, F>(items: Vec<T>, concurrency: usize, f: F) -> Vec<R>
+/// Maximum concurrent operations against any one host: the driver's value when
+/// valid, otherwise [`DEFAULT_MAX_PER_HOST`].
+pub fn resolve_per_host(requested: Option<i64>) -> usize {
+    match requested {
+        Some(limit) if limit >= 1 => limit as usize,
+        _ => DEFAULT_MAX_PER_HOST,
+    }
+}
+
+/// A counting semaphore over a fixed permit budget; used as the global ceiling.
+struct Semaphore {
+    permits: Mutex<usize>,
+    available: Condvar,
+}
+
+impl Semaphore {
+    fn new(permits: usize) -> Self {
+        Self {
+            permits: Mutex::new(permits.max(1)),
+            available: Condvar::new(),
+        }
+    }
+
+    fn acquire(&self) {
+        let mut permits = self.permits.lock().expect("semaphore poisoned");
+        while *permits == 0 {
+            permits = self.available.wait(permits).expect("semaphore poisoned");
+        }
+        *permits -= 1;
+    }
+
+    fn release(&self) {
+        *self.permits.lock().expect("semaphore poisoned") += 1;
+        self.available.notify_one();
+    }
+}
+
+/// Applies `f` to each item across scoped worker threads, bounding concurrency
+/// both globally (`global_limit`, the `--jobs` ceiling) and per host
+/// (`per_host_limit`). Items are keyed by `host_of`; `None` means no parseable
+/// host (local) and is bounded only by the global ceiling. Different hosts run
+/// concurrently, and results preserve input order. `f` runs on workers, so
+/// anything it borrows (sink, backend, workspace root) must be `Sync`.
+pub fn par_map_per_host<T, R, K, F>(
+    items: Vec<T>,
+    global_limit: usize,
+    per_host_limit: usize,
+    host_of: K,
+    f: F,
+) -> Vec<R>
 where
     T: Send,
     R: Send,
+    K: Fn(&T) -> Option<String>,
     F: Fn(T) -> R + Sync,
 {
     let count = items.len();
     if count == 0 {
         return Vec::new();
     }
-    let workers = concurrency.clamp(1, count);
-    let items: Vec<Mutex<Option<T>>> = items
+    // Group input indices by host (None = local).
+    let mut groups: HashMap<Option<String>, Vec<usize>> = HashMap::new();
+    for (index, item) in items.iter().enumerate() {
+        groups.entry(host_of(item)).or_default().push(index);
+    }
+    let group_list: Vec<(Option<String>, Vec<usize>)> = groups.into_iter().collect();
+    let cursors: Vec<AtomicUsize> = (0..group_list.len()).map(|_| AtomicUsize::new(0)).collect();
+    let slots: Vec<Mutex<Option<T>>> = items
         .into_iter()
         .map(|item| Mutex::new(Some(item)))
         .collect();
     let results: Vec<Mutex<Option<R>>> = (0..count).map(|_| Mutex::new(None)).collect();
-    let next = AtomicUsize::new(0);
+    let global = Semaphore::new(global_limit);
+    let f = &f;
+
     std::thread::scope(|scope| {
-        for _ in 0..workers {
-            scope.spawn(|| {
-                loop {
-                    let index = next.fetch_add(1, Ordering::Relaxed);
-                    if index >= count {
-                        break;
+        for (group_index, (host, indices)) in group_list.iter().enumerate() {
+            // A hosted group runs at most `per_host_limit` at once; local items
+            // are bounded only by the global ceiling.
+            let group_limit = if host.is_some() {
+                per_host_limit.max(1)
+            } else {
+                global_limit.max(1)
+            };
+            for _ in 0..group_limit.min(indices.len()) {
+                let cursor = &cursors[group_index];
+                let indices = indices.as_slice();
+                let slots = &slots;
+                let results = &results;
+                let global = &global;
+                scope.spawn(move || {
+                    loop {
+                        let position = cursor.fetch_add(1, Ordering::Relaxed);
+                        if position >= indices.len() {
+                            break;
+                        }
+                        let index = indices[position];
+                        let item = slots[index]
+                            .lock()
+                            .expect("par_map slot poisoned")
+                            .take()
+                            .expect("each item is taken once");
+                        global.acquire();
+                        let result = f(item);
+                        global.release();
+                        *results[index].lock().expect("par_map result poisoned") = Some(result);
                     }
-                    let item = items[index]
-                        .lock()
-                        .expect("par_map item poisoned")
-                        .take()
-                        .expect("each item is taken once");
-                    let result = f(item);
-                    *results[index].lock().expect("par_map result poisoned") = Some(result);
-                }
-            });
+                });
+            }
         }
     });
+
     results
         .into_iter()
         .map(|cell| {
@@ -915,26 +990,54 @@ mod tests {
         assert_eq!(progress_event_count(&sink.take()), 5);
     }
 
-    #[test]
-    fn par_map_preserves_order_and_runs_concurrently() {
+    fn run_tracking_peak<K>(global: usize, per_host: usize, host_of: K) -> usize
+    where
+        K: Fn(&usize) -> Option<String>,
+    {
         let active = AtomicUsize::new(0);
         let max_active = AtomicUsize::new(0);
-
-        let results = par_map((0..8).collect(), 4, |value: usize| {
-            let now = active.fetch_add(1, Ordering::SeqCst) + 1;
-            max_active.fetch_max(now, Ordering::SeqCst);
-            std::thread::sleep(std::time::Duration::from_millis(10));
-            active.fetch_sub(1, Ordering::SeqCst);
-            value * 10
-        });
-
-        assert_eq!(results, (0..8).map(|value| value * 10).collect::<Vec<_>>());
-        assert!(
-            max_active.load(Ordering::SeqCst) > 1,
-            "expected concurrent execution, peak workers was {}",
-            max_active.load(Ordering::SeqCst)
+        let results = par_map_per_host(
+            (0..8).collect(),
+            global,
+            per_host,
+            host_of,
+            |value: usize| {
+                let now = active.fetch_add(1, Ordering::SeqCst) + 1;
+                max_active.fetch_max(now, Ordering::SeqCst);
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                active.fetch_sub(1, Ordering::SeqCst);
+                value * 10
+            },
         );
-        assert_eq!(par_map(Vec::<usize>::new(), 4, |value| value), Vec::new());
+        assert_eq!(results, (0..8).map(|value| value * 10).collect::<Vec<_>>());
+        max_active.load(Ordering::SeqCst)
+    }
+
+    #[test]
+    fn par_map_per_host_caps_concurrency_per_host() {
+        // One host, per-host 2: capped at 2 despite a high global ceiling.
+        let peak = run_tracking_peak(50, 2, |_| Some("h".to_owned()));
+        assert_eq!(peak, 2, "single host should run exactly per_host=2 at once");
+    }
+
+    #[test]
+    fn par_map_per_host_overlaps_distinct_hosts() {
+        // Two hosts, per-host 1: each host serialized, but the two overlap.
+        let peak = run_tracking_peak(50, 1, |value| {
+            Some(if value % 2 == 0 { "a" } else { "b" }.to_owned())
+        });
+        assert_eq!(peak, 2, "two hosts at per_host=1 should overlap to 2");
+        assert_eq!(
+            par_map_per_host(Vec::<usize>::new(), 4, 8, |_| None, |value| value),
+            Vec::new()
+        );
+    }
+
+    #[test]
+    fn par_map_per_host_bounds_hostless_items_by_global_only() {
+        // No host: bounded only by the global ceiling.
+        let peak = run_tracking_peak(3, 1, |_| None);
+        assert_eq!(peak, 3, "hostless items ignore per_host, use global=3");
     }
 
     #[test]

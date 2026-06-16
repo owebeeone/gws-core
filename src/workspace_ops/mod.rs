@@ -7,9 +7,11 @@ use crate::artifact::{
     self, ArtifactSourceKind, CreatedByArtifact, DesiredRefArtifact, LockArtifact,
     ManifestArtifact, ManifestMember, RemoteArtifact, ResolvedMemberArtifact, WorkspaceHeader,
 };
-use crate::git::{Git2Backend, GitBackend, GitHeadState, GitStatus};
+use crate::git::{Git2Backend, GitBackend, GitHeadState, GitStatus, git_host};
 use crate::model::{ErrorCode, MemberId, ModelError, ModelResult, SourceId};
-use crate::operation::{EventEmitter, EventSink, OperationRequest, par_map, resolve_concurrency};
+use crate::operation::{
+    EventEmitter, EventSink, OperationRequest, par_map_per_host, resolve_jobs, resolve_per_host,
+};
 use crate::workspace::{
     MemberPath, WORKSPACE_DIR, WORKSPACE_MANIFEST, discover_workspace_root,
     preflight_create_workspace, validate_member_path_set,
@@ -326,59 +328,70 @@ where
         .unwrap_or(0);
     let emitter = EventEmitter::new(&context, events, progress_interval);
     emitter.operation_started();
-    let concurrency = resolve_concurrency(
-        request
-            .meta
-            .policy
-            .as_ref()
-            .and_then(|policy| policy.concurrency),
-    );
     type InitOutcome = (
         ManifestMember,
         ResolvedMemberArtifact,
         crate::MemberResponse,
     );
-    let outcomes = par_map(plans, concurrency, |plan| -> ModelResult<InitOutcome> {
-        let member_root = root.join(plan.path.as_str());
-        emitter.member_started(&plan.member_id, plan.path.as_str());
-        backend.clone_repo_with_progress(&plan.source.url, &member_root, &|progress| {
-            emitter.member_progress(&plan.member_id, plan.path.as_str(), progress)
-        })?;
-        let head = backend.head(&member_root)?;
-        let status = backend.status(&member_root)?;
-        emitter.member_finished(&plan.member_id, plan.path.as_str());
-        let remotes = backend.remotes(&member_root)?;
-        let manifest_member = ManifestMember {
-            id: plan.member_id.clone(),
-            path: plan.path.as_str().to_owned(),
-            source_kind: ArtifactSourceKind::Git,
-            source_id: plan.source_id.clone(),
-            active: true,
-            desired: Some(desired_from_head(&head)),
-            remotes: remotes
-                .iter()
-                .map(|remote| RemoteArtifact {
-                    name: remote.name.clone(),
-                    url: remote.url.clone().unwrap_or_default(),
-                    fetch: true,
-                    push: true,
-                })
-                .collect(),
-        };
-        let locked = resolved_member(&manifest_member, &head, &status);
-        let response = crate::MemberResponse {
-            member_id: plan.member_id,
-            member_path: manifest_member.path.clone(),
-            source_kind: crate::SourceKind::Git,
-            status: crate::MemberStatus::Ok,
-            error: None,
-            planned: None,
-            state: Some(protocol_state(&manifest_member, &locked)),
-            git_status: None,
-            lock_match: Some(crate::LockMatch::Matches),
-        };
-        Ok((manifest_member, locked, response))
-    });
+    let outcomes = par_map_per_host(
+        plans,
+        resolve_jobs(
+            request
+                .meta
+                .policy
+                .as_ref()
+                .and_then(|policy| policy.concurrency),
+        ),
+        resolve_per_host(
+            request
+                .meta
+                .policy
+                .as_ref()
+                .and_then(|policy| policy.max_connections_per_host),
+        ),
+        |plan| git_host(&plan.source.url),
+        |plan| -> ModelResult<InitOutcome> {
+            let member_root = root.join(plan.path.as_str());
+            emitter.member_started(&plan.member_id, plan.path.as_str());
+            backend.clone_repo_with_progress(&plan.source.url, &member_root, &|progress| {
+                emitter.member_progress(&plan.member_id, plan.path.as_str(), progress)
+            })?;
+            let head = backend.head(&member_root)?;
+            let status = backend.status(&member_root)?;
+            emitter.member_finished(&plan.member_id, plan.path.as_str());
+            let remotes = backend.remotes(&member_root)?;
+            let manifest_member = ManifestMember {
+                id: plan.member_id.clone(),
+                path: plan.path.as_str().to_owned(),
+                source_kind: ArtifactSourceKind::Git,
+                source_id: plan.source_id.clone(),
+                active: true,
+                desired: Some(desired_from_head(&head)),
+                remotes: remotes
+                    .iter()
+                    .map(|remote| RemoteArtifact {
+                        name: remote.name.clone(),
+                        url: remote.url.clone().unwrap_or_default(),
+                        fetch: true,
+                        push: true,
+                    })
+                    .collect(),
+            };
+            let locked = resolved_member(&manifest_member, &head, &status);
+            let response = crate::MemberResponse {
+                member_id: plan.member_id,
+                member_path: manifest_member.path.clone(),
+                source_kind: crate::SourceKind::Git,
+                status: crate::MemberStatus::Ok,
+                error: None,
+                planned: None,
+                state: Some(protocol_state(&manifest_member, &locked)),
+                git_status: None,
+                lock_match: Some(crate::LockMatch::Matches),
+            };
+            Ok((manifest_member, locked, response))
+        },
+    );
     let mut members = Vec::with_capacity(outcomes.len());
     for outcome in outcomes {
         let (manifest_member, locked, response) = outcome?;
@@ -545,16 +558,23 @@ where
         .unwrap_or(0);
     let emitter = EventEmitter::new(&context, events, progress_interval);
     emitter.operation_started();
-    let concurrency = resolve_concurrency(
-        request
-            .meta
-            .policy
-            .as_ref()
-            .and_then(|policy| policy.concurrency),
-    );
-    let outcomes = par_map(
+    let outcomes = par_map_per_host(
         plans,
-        concurrency,
+        resolve_jobs(
+            request
+                .meta
+                .policy
+                .as_ref()
+                .and_then(|policy| policy.concurrency),
+        ),
+        resolve_per_host(
+            request
+                .meta
+                .policy
+                .as_ref()
+                .and_then(|policy| policy.max_connections_per_host),
+        ),
+        |plan| plan.clone_url.as_deref().and_then(git_host),
         |plan| -> ModelResult<crate::MemberResponse> {
             emitter.member_started(&plan.member_id, &plan.state.path);
             if let Some(url) = plan.clone_url.as_deref() {

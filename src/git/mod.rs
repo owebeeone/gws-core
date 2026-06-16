@@ -584,6 +584,35 @@ fn io_error(error: std::io::Error) -> ModelError {
     ModelError::new(ErrorCode::IoError, error.to_string())
 }
 
+/// Extracts the remote host from a git URL, for per-host connection limiting.
+/// Handles scp-like `git@host:path`, scheme URLs (`https://`, `ssh://`, …), and
+/// returns `None` for local paths or any URL with no parseable host (which the
+/// caller bounds only by the global concurrency ceiling).
+pub fn git_host(url: &str) -> Option<String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return None;
+    }
+    if url.contains("://") {
+        return url::Url::parse(url)
+            .ok()
+            .and_then(|parsed| parsed.host_str().map(str::to_ascii_lowercase))
+            .filter(|host| !host.is_empty());
+    }
+    // scp-like: [user@]host:path — a colon before any slash.
+    let colon = url.find(':')?;
+    let authority = &url[..colon];
+    if authority.contains('/') {
+        return None; // a local path that happens to contain a colon
+    }
+    let host = authority.rsplit('@').next().unwrap_or(authority).trim();
+    // A lone alphabetic char before ':' is a Windows drive letter, not a host.
+    if host.is_empty() || (host.len() == 1 && host.chars().all(|c| c.is_ascii_alphabetic())) {
+        return None;
+    }
+    Some(host.to_ascii_lowercase())
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -593,6 +622,41 @@ mod tests {
     use crate::model::ErrorCode;
 
     use super::*;
+
+    #[test]
+    fn git_host_parses_scheme_scp_and_local_forms() {
+        assert_eq!(
+            git_host("https://github.com/o/r.git").as_deref(),
+            Some("github.com")
+        );
+        assert_eq!(
+            git_host("https://github.com:443/o/r.git").as_deref(),
+            Some("github.com")
+        );
+        assert_eq!(
+            git_host("ssh://git@example.org/o/r.git").as_deref(),
+            Some("example.org")
+        );
+        assert_eq!(
+            git_host("git@github.com:o/r.git").as_deref(),
+            Some("github.com")
+        );
+        assert_eq!(
+            git_host("github.com:o/r.git").as_deref(),
+            Some("github.com")
+        );
+        // Host is case-insensitive.
+        assert_eq!(
+            git_host("GitHub.COM:o/r.git").as_deref(),
+            Some("github.com")
+        );
+        // Local / hostless forms.
+        assert_eq!(git_host("/tmp/repo.git"), None);
+        assert_eq!(git_host("file:///tmp/repo.git"), None);
+        assert_eq!(git_host("./relative.git"), None);
+        assert_eq!(git_host("C:/work/repo.git"), None);
+        assert_eq!(git_host(""), None);
+    }
 
     #[test]
     fn creates_and_detects_ordinary_non_bare_repositories() {

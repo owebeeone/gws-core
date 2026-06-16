@@ -143,9 +143,10 @@ impl From<&model::OperationPolicy> for generated::OperationPolicy {
             unsupported_member: Some(value.unsupported_member.into()),
             remote: value.remote.clone(),
             concurrency: value.concurrency.map(|value| value as i64),
-            // Progress coalescing is read directly from the wire policy by
-            // handlers; the internal model does not carry it.
+            // Progress coalescing and per-host limits are read directly from the
+            // wire policy by handlers; the internal model does not carry them.
             progress_min_interval_ms: None,
+            max_connections_per_host: None,
         }
     }
 }

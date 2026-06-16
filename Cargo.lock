@@ -92,6 +92,7 @@ dependencies = [
  "git2",
  "serde",
  "serde_yaml",
+ "url",
 ]
 
 [[package]]

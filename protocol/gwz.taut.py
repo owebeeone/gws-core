@@ -287,7 +287,11 @@ SCHEMA = schema(
         # Minimum milliseconds between member_progress events per member.
         # Coalesces high-frequency Git transfer updates at emit time; absent or
         # 0 means no limit (emit every update).
-        progress_min_interval_ms=F(7, INT, optional=True)),
+        progress_min_interval_ms=F(7, INT, optional=True),
+        # Maximum concurrent network operations per remote host. Protects each
+        # host from too many simultaneous connections; members whose host cannot
+        # be parsed are bounded only by `concurrency`.
+        max_connections_per_host=F(8, INT, optional=True)),
 
     # Common operation metadata supplied by every request.
     RequestMeta=Msg(

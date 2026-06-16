@@ -307,6 +307,38 @@ impl LockMatch {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum GitProgressPhase {
+    #[default] Enumerating,
+    Counting,
+    Compressing,
+    Receiving,
+    Resolving,
+    CheckingOut,
+    Writing,
+}
+impl GitProgressPhase {
+    pub fn wire(self) -> i64 { match self {
+        Self::Enumerating => 0,
+        Self::Counting => 1,
+        Self::Compressing => 2,
+        Self::Receiving => 3,
+        Self::Resolving => 4,
+        Self::CheckingOut => 5,
+        Self::Writing => 6,
+    } }
+    pub fn from_wire(v: i64) -> Self { match v {
+        0 => Self::Enumerating,
+        1 => Self::Counting,
+        2 => Self::Compressing,
+        3 => Self::Receiving,
+        4 => Self::Resolving,
+        5 => Self::CheckingOut,
+        6 => Self::Writing,
+        _ => panic!("bad GitProgressPhase wire value {}", v),
+    } }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum StatusMode {
     #[default] Summary,
     Combined,
@@ -1014,6 +1046,38 @@ impl GitFileChange {
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
+pub struct GitTransferProgress {
+    pub phase: GitProgressPhase,
+    pub received_objects: Option<i64>,
+    pub total_objects: Option<i64>,
+    pub received_bytes: Option<i64>,
+    pub indexed_deltas: Option<i64>,
+    pub total_deltas: Option<i64>,
+}
+impl GitTransferProgress {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, Cbor::Int(self.phase.wire())),
+            (2, match &self.received_objects { Some(v) => Cbor::Int(*v), None => Cbor::Null }),
+            (3, match &self.total_objects { Some(v) => Cbor::Int(*v), None => Cbor::Null }),
+            (4, match &self.received_bytes { Some(v) => Cbor::Int(*v), None => Cbor::Null }),
+            (5, match &self.indexed_deltas { Some(v) => Cbor::Int(*v), None => Cbor::Null }),
+            (6, match &self.total_deltas { Some(v) => Cbor::Int(*v), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            phase: GitProgressPhase::from_wire(c.get(1).int()),
+            received_objects: { let v = c.get(2); if v.is_null() { None } else { Some(v.int()) } },
+            total_objects: { let v = c.get(3); if v.is_null() { None } else { Some(v.int()) } },
+            received_bytes: { let v = c.get(4); if v.is_null() { None } else { Some(v.int()) } },
+            indexed_deltas: { let v = c.get(5); if v.is_null() { None } else { Some(v.int()) } },
+            total_deltas: { let v = c.get(6); if v.is_null() { None } else { Some(v.int()) } },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct WorkspaceRootGitStatus {
     pub branch: Option<String>,
     pub detached: bool,
@@ -1315,6 +1379,7 @@ pub struct OperationEvent {
     pub member: Option<MemberResponse>,
     pub error: Option<GwzError>,
     pub attribution: Option<OperationAttribution>,
+    pub progress: Option<GitTransferProgress>,
 }
 impl OperationEvent {
     pub fn to_cbor(&self) -> Cbor {
@@ -1331,6 +1396,7 @@ impl OperationEvent {
             (10, match &self.member { Some(v) => v.to_cbor(), None => Cbor::Null }),
             (11, match &self.error { Some(v) => v.to_cbor(), None => Cbor::Null }),
             (12, match &self.attribution { Some(v) => v.to_cbor(), None => Cbor::Null }),
+            (13, match &self.progress { Some(v) => v.to_cbor(), None => Cbor::Null }),
         ])
     }
     pub fn from_cbor(c: &Cbor) -> Self {
@@ -1347,6 +1413,7 @@ impl OperationEvent {
             member: { let v = c.get(10); if v.is_null() { None } else { Some(MemberResponse::from_cbor(v)) } },
             error: { let v = c.get(11); if v.is_null() { None } else { Some(GwzError::from_cbor(v)) } },
             attribution: { let v = c.get(12); if v.is_null() { None } else { Some(OperationAttribution::from_cbor(v)) } },
+            progress: { let v = c.get(13); if v.is_null() { None } else { Some(GitTransferProgress::from_cbor(v)) } },
         }
     }
 }

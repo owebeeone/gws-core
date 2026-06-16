@@ -153,6 +153,16 @@ SCHEMA = schema(
          differs=2,
          missing=3),
 
+    # Phase of a member's in-flight Git transfer, for progress events.
+    GitProgressPhase=Enum(
+         enumerating=0,
+         counting=1,
+         compressing=2,
+         receiving=3,
+         resolving=4,
+         checking_out=5,
+         writing=6),
+
     # Status response mode.
     StatusMode=Enum(
          summary=0,
@@ -418,6 +428,22 @@ SCHEMA = schema(
         # Rename/copy source path relative to member root.
         original_repo_path=F(7, STR, optional=True)),
 
+    # Git transfer counters for an in-flight member, surfaced in
+    # member_progress events. Counts come from libgit2 progress callbacks;
+    # totals may be absent until the remote reports them.
+    GitTransferProgress=Msg(
+        phase=F(1, Ref.GitProgressPhase),
+        # Objects received so far (clone/fetch) or written (push).
+        received_objects=F(2, INT, optional=True),
+        # Total objects in the transfer, when known.
+        total_objects=F(3, INT, optional=True),
+        # Bytes received/written so far.
+        received_bytes=F(4, INT, optional=True),
+        # Deltas resolved so far.
+        indexed_deltas=F(5, INT, optional=True),
+        # Total deltas to resolve, when known.
+        total_deltas=F(6, INT, optional=True)),
+
     # Root workspace Git summary used in status responses.
     WorkspaceRootGitStatus=Msg(
         branch=F(1, STR, optional=True),
@@ -533,7 +559,9 @@ SCHEMA = schema(
         # Optional member snapshot associated with this event.
         member=F(10, Ref.MemberResponse, optional=True),
         error=F(11, Ref.GwzError, optional=True),
-        attribution=F(12, Ref.OperationAttribution, optional=True)),
+        attribution=F(12, Ref.OperationAttribution, optional=True),
+        # Git transfer counters for member_progress events.
+        progress=F(13, Ref.GitTransferProgress, optional=True)),
 
     # Final operation record returned by operation.result.
     OperationResult=Msg(

@@ -347,6 +347,7 @@ impl EventSink {
             member: None,
             error: None,
             attribution: self.context.attribution.as_ref().map(Into::into),
+            progress: None,
         };
         state.next_sequence += 1;
         state.events.push_back(event);
@@ -425,6 +426,7 @@ fn push_event(state: &mut OperationState, context: &OperationContext) {
         member: None,
         error: None,
         attribution: context.attribution.as_ref().map(Into::into),
+        progress: None,
     };
     state.next_sequence += 1;
     state.events.push_back(reset);

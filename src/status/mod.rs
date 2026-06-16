@@ -30,13 +30,12 @@ where
         .workspace
         .as_ref()
         .and_then(|workspace| workspace.workspace_id.as_ref())
+        && expected != &manifest.workspace.id
     {
-        if expected != &manifest.workspace.id {
-            return Err(ModelError::new(
-                ErrorCode::WorkspaceNotFound,
-                "workspace id does not match manifest",
-            ));
-        }
+        return Err(ModelError::new(
+            ErrorCode::WorkspaceNotFound,
+            "workspace id does not match manifest",
+        ));
     }
 
     let lock = read_lock_optional(&workspace_root)?;
@@ -292,7 +291,7 @@ fn member_error(
         member_path: member.path.clone(),
         source_kind,
         status,
-        error: Some(crate::GwsError {
+        error: Some(crate::GwzError {
             code: error.code.into(),
             message: error.message,
             member_id: Some(member.id.clone()),
@@ -510,7 +509,7 @@ mod tests {
         crate::StatusRequest {
             meta: crate::RequestMeta {
                 request_id: "req_status".to_owned(),
-                schema_version: "gws.protocol/v0".to_owned(),
+                schema_version: "gwz.protocol/v0".to_owned(),
                 selection,
                 ..Default::default()
             },
@@ -590,7 +589,7 @@ mod tests {
         index.write()?;
         let tree_id = index.write_tree()?;
         let tree = repo.find_tree(tree_id)?;
-        let signature = git2::Signature::now("GWS Test", "gws@example.invalid")?;
+        let signature = git2::Signature::now("GWZ Test", "gwz@example.invalid")?;
         let parent_commits = parents
             .iter()
             .map(|id| repo.find_commit(*id))
@@ -630,7 +629,7 @@ mod tests {
                 .unwrap()
                 .as_nanos();
             let path = std::env::temp_dir().join(format!(
-                "gws-core-status-{prefix}-{}-{unique}",
+                "gwz-core-status-{prefix}-{}-{unique}",
                 std::process::id()
             ));
             fs::create_dir_all(&path).unwrap();

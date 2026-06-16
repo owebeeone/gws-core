@@ -8,12 +8,12 @@ use serde::{Deserialize, Serialize};
 use crate::model::{ErrorCode, ModelError, ModelResult};
 use crate::workspace::{MemberPath, WORKSPACE_MANIFEST};
 
-pub const WORKSPACE_SCHEMA: &str = "gws.workspace/v0";
-pub const LOCK_SCHEMA: &str = "gws.lock/v0";
-pub const SNAPSHOT_SCHEMA: &str = "gws.snapshot/v0";
-pub const TAG_SCHEMA: &str = "gws.tag/v0";
-pub const LOCK_PATH: &str = "workspace/gws.lock.yml";
-pub const SNAPSHOT_DIR: &str = ".gws/snapshots";
+pub const WORKSPACE_SCHEMA: &str = "gwz.workspace/v0";
+pub const LOCK_SCHEMA: &str = "gwz.lock/v0";
+pub const SNAPSHOT_SCHEMA: &str = "gwz.snapshot/v0";
+pub const TAG_SCHEMA: &str = "gwz.tag/v0";
+pub const LOCK_PATH: &str = "workspace/gwz.lock.yml";
+pub const SNAPSHOT_DIR: &str = ".gwz/snapshots";
 pub const TAG_DIR: &str = "workspace/tags";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -507,13 +507,13 @@ mod tests {
 
     use super::*;
 
-    const MANIFEST_GOLDEN: &str = "schema: gws.workspace/v0\nworkspace:\n  id: ws_01\nmembers:\n- id: mem_01\n  path: repos/example\n  type: git\n  source_id: src_01\n  active: true\n  desired:\n    branch: main\n  remotes:\n  - name: origin\n    url: git@example.invalid:example.git\n    fetch: true\n    push: true\n";
+    const MANIFEST_GOLDEN: &str = "schema: gwz.workspace/v0\nworkspace:\n  id: ws_01\nmembers:\n- id: mem_01\n  path: repos/example\n  type: git\n  source_id: src_01\n  active: true\n  desired:\n    branch: main\n  remotes:\n  - name: origin\n    url: git@example.invalid:example.git\n    fetch: true\n    push: true\n";
 
-    const LOCK_GOLDEN: &str = "schema: gws.lock/v0\nworkspace_id: ws_01\nmanifest_schema: gws.workspace/v0\ncreated_at: 2026-06-15T00:00:00Z\nmembers:\n  mem_01:\n    path: repos/example\n    source_id: src_01\n    source_kind: git\n    commit: abc123\n    branch: main\n    detached: false\n    upstream: origin/main\n    dirty: false\n    materialized: true\n";
+    const LOCK_GOLDEN: &str = "schema: gwz.lock/v0\nworkspace_id: ws_01\nmanifest_schema: gwz.workspace/v0\ncreated_at: 2026-06-15T00:00:00Z\nmembers:\n  mem_01:\n    path: repos/example\n    source_id: src_01\n    source_kind: git\n    commit: abc123\n    branch: main\n    detached: false\n    upstream: origin/main\n    dirty: false\n    materialized: true\n";
 
-    const SNAPSHOT_GOLDEN: &str = "schema: gws.snapshot/v0\nworkspace_id: ws_01\nsnapshot_id: snap_demo\ncreated_at: 2026-06-15T00:00:00Z\ncreated_by:\n  actor_id: agent_01\nselected_members:\n- mem_01\nmembers:\n  mem_01:\n    path: repos/example\n    source_kind: git\n    commit: abc123\n";
+    const SNAPSHOT_GOLDEN: &str = "schema: gwz.snapshot/v0\nworkspace_id: ws_01\nsnapshot_id: snap_demo\ncreated_at: 2026-06-15T00:00:00Z\ncreated_by:\n  actor_id: agent_01\nselected_members:\n- mem_01\nmembers:\n  mem_01:\n    path: repos/example\n    source_kind: git\n    commit: abc123\n";
 
-    const TAG_GOLDEN: &str = "schema: gws.tag/v0\nworkspace_id: ws_01\ntag: demo\ncreated_at: 2026-06-15T00:00:00Z\ncreated_by:\n  actor_id: agent_01\nselected_members:\n- mem_01\nmembers:\n  mem_01:\n    path: repos/example\n    source_kind: git\n    commit: abc123\n";
+    const TAG_GOLDEN: &str = "schema: gwz.tag/v0\nworkspace_id: ws_01\ntag: demo\ncreated_at: 2026-06-15T00:00:00Z\ncreated_by:\n  actor_id: agent_01\nselected_members:\n- mem_01\nmembers:\n  mem_01:\n    path: repos/example\n    source_kind: git\n    commit: abc123\n";
 
     #[test]
     fn manifest_round_trips_and_matches_golden_yaml() {
@@ -543,10 +543,10 @@ mod tests {
 
     #[test]
     fn unsupported_major_schema_versions_fail_with_typed_error() {
-        let manifest = MANIFEST_GOLDEN.replace("gws.workspace/v0", "gws.workspace/v1");
-        let lock = LOCK_GOLDEN.replacen("gws.lock/v0", "gws.lock/v1", 1);
-        let snapshot = SNAPSHOT_GOLDEN.replace("gws.snapshot/v0", "gws.snapshot/v1");
-        let tag = TAG_GOLDEN.replace("gws.tag/v0", "gws.tag/v1");
+        let manifest = MANIFEST_GOLDEN.replace("gwz.workspace/v0", "gwz.workspace/v1");
+        let lock = LOCK_GOLDEN.replacen("gwz.lock/v0", "gwz.lock/v1", 1);
+        let snapshot = SNAPSHOT_GOLDEN.replace("gwz.snapshot/v0", "gwz.snapshot/v1");
+        let tag = TAG_GOLDEN.replace("gwz.tag/v0", "gwz.tag/v1");
 
         assert_eq!(
             ManifestArtifact::from_yaml(&manifest).unwrap_err().code,
@@ -706,7 +706,7 @@ mod tests {
                 .unwrap()
                 .as_nanos();
             let path = std::env::temp_dir()
-                .join(format!("gws-core-{name}-{}-{unique}", std::process::id()));
+                .join(format!("gwz-core-{name}-{}-{unique}", std::process::id()));
             fs::create_dir_all(&path).unwrap();
             Self { path }
         }

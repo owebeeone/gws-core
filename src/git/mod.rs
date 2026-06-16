@@ -153,7 +153,7 @@ impl GitBackend for Git2Backend {
             .fetch(
                 &refspecs,
                 Some(&mut remote_fetch_options(self.credential_helpers)),
-                Some("gws fetch"),
+                Some("gwz fetch"),
             )
             .map_err(git_error)?;
         Ok(GitFetchResult {
@@ -188,7 +188,7 @@ impl GitBackend for Git2Backend {
         let local_ref_name = format!("refs/heads/{branch}");
         let mut local_ref = repo.find_reference(&local_ref_name).map_err(git_error)?;
         local_ref
-            .set_target(target, "gws fast-forward")
+            .set_target(target, "gwz fast-forward")
             .map_err(git_error)?;
         repo.set_head(&local_ref_name).map_err(git_error)?;
         let mut checkout = git2::build::CheckoutBuilder::new();
@@ -364,18 +364,16 @@ fn remote_credential(
     }
     if allowed_types.is_user_pass_plaintext()
         && credential_helpers == CredentialHelperPolicy::AllowConfigured
+        && let Ok(config) = git2::Config::open_default()
+        && let Ok(credential) = git2::Cred::credential_helper(&config, url, username_from_url)
     {
-        if let Ok(config) = git2::Config::open_default() {
-            if let Ok(credential) = git2::Cred::credential_helper(&config, url, username_from_url) {
-                return Ok(credential);
-            }
-        }
+        return Ok(credential);
     }
     if allowed_types.is_default() {
         return git2::Cred::default();
     }
     Err(git2::Error::from_str(
-        "GWS could not acquire credentials for the requested remote",
+        "GWZ could not acquire credentials for the requested remote",
     ))
 }
 
@@ -713,7 +711,7 @@ mod tests {
         let repo = git2::Repository::open(repo_path)?;
         let tree_id = repo.index()?.write_tree()?;
         let tree = repo.find_tree(tree_id)?;
-        let signature = git2::Signature::now("GWS Test", "gws@example.invalid")?;
+        let signature = git2::Signature::now("GWZ Test", "gwz@example.invalid")?;
         let parent_commits = parents
             .iter()
             .map(|id| repo.find_commit(*id))
@@ -748,7 +746,7 @@ mod tests {
                 .unwrap()
                 .as_nanos();
             let path = std::env::temp_dir().join(format!(
-                "gws-core-git-{prefix}-{}-{unique}",
+                "gwz-core-git-{prefix}-{}-{unique}",
                 std::process::id()
             ));
             fs::create_dir_all(&path).unwrap();

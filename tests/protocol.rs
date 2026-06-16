@@ -2,9 +2,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use gws_core::{
+use gwz_core::{
     ActionKind, AggregateStatus, EventKind, GitBranchDifference, GitBranchGroup, GitFileChange,
-    GitMemberBranchStatus, GitObjectIdentity, GwsError, GwsErrorCode, MemberResponse, MemberStatus,
+    GitMemberBranchStatus, GitObjectIdentity, GwzError, GwzErrorCode, MemberResponse, MemberStatus,
     OperationActor, OperationAttribution, OperationEvent, RequestMeta, ResponseEnvelope,
     ResponseMeta, Severity, SourceKind, StatusMode, StatusPathStyle, StatusRequest, StatusResponse,
     WorkspaceGitStatus, decode, encode,
@@ -12,8 +12,8 @@ use gws_core::{
 
 fn round_trip<T>(
     value: &T,
-    to_cbor: impl Fn(&T) -> gws_core::Cbor,
-    from_cbor: impl Fn(&gws_core::Cbor) -> T,
+    to_cbor: impl Fn(&T) -> gwz_core::Cbor,
+    from_cbor: impl Fn(&gwz_core::Cbor) -> T,
 ) -> T {
     from_cbor(&decode(&encode(&to_cbor(value))))
 }
@@ -23,7 +23,7 @@ fn status_request_round_trips() {
     let request = StatusRequest {
         meta: RequestMeta {
             request_id: "req-1".to_owned(),
-            schema_version: "gws.v0".to_owned(),
+            schema_version: "gwz.v0".to_owned(),
             attribution: Some(attribution()),
             ..RequestMeta::default()
         },
@@ -45,7 +45,7 @@ fn status_response_round_trips_combined_workspace_status() {
         response: ResponseEnvelope {
             meta: ResponseMeta {
                 request_id: "req-1".to_owned(),
-                schema_version: "gws.v0".to_owned(),
+                schema_version: "gwz.v0".to_owned(),
                 action: ActionKind::Status,
                 aggregate_status: AggregateStatus::Ok,
                 ..ResponseMeta::default()
@@ -106,7 +106,7 @@ fn response_envelope_round_trips_with_member_error() {
     let response = ResponseEnvelope {
         meta: ResponseMeta {
             request_id: "req-1".to_owned(),
-            schema_version: "gws.v0".to_owned(),
+            schema_version: "gwz.v0".to_owned(),
             action: ActionKind::Status,
             aggregate_status: AggregateStatus::Rejected,
             message: Some("workspace has errors".to_owned()),
@@ -173,23 +173,23 @@ fn attribution_round_trips_actor_and_git_identities_separately() {
 
 #[test]
 fn error_code_wire_values_are_pinned() {
-    assert_eq!(GwsErrorCode::Ok.wire(), 0);
-    assert_eq!(GwsErrorCode::InvalidRequest.wire(), 1);
-    assert_eq!(GwsErrorCode::DivergedMember.wire(), 16);
-    assert_eq!(GwsErrorCode::AttributionDenied.wire(), 26);
-    assert_eq!(GwsErrorCode::InternalError.wire(), 29);
+    assert_eq!(GwzErrorCode::Ok.wire(), 0);
+    assert_eq!(GwzErrorCode::InvalidRequest.wire(), 1);
+    assert_eq!(GwzErrorCode::DivergedMember.wire(), 16);
+    assert_eq!(GwzErrorCode::AttributionDenied.wire(), 26);
+    assert_eq!(GwzErrorCode::InternalError.wire(), 29);
 }
 
 #[test]
 fn generated_protocol_is_current() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let out_dir = std::env::temp_dir().join(format!("gws-taut-gen-{}", std::process::id()));
+    let out_dir = std::env::temp_dir().join(format!("gwz-taut-gen-{}", std::process::id()));
     let _ = fs::remove_dir_all(&out_dir);
 
     let status = taut_command(&root)
         .args([
             "gen",
-            "protocol/gws.taut.py",
+            "protocol/gwz.taut.py",
             "-o",
             out_dir.to_str().expect("temp path is not utf-8"),
             "-l",
@@ -210,7 +210,7 @@ fn generated_protocol_is_current() {
     let status = taut_command(&root)
         .args([
             "corpus",
-            "protocol/gws.taut.py",
+            "protocol/gwz.taut.py",
             "-o",
             "protocol/corpus",
             "-l",
@@ -227,28 +227,28 @@ fn generated_protocol_is_current() {
 #[test]
 fn protocol_schema_uses_keyword_message_dsl() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let schema = fs::read_to_string(root.join("protocol/gws.taut.py"))
-        .expect("failed to read protocol/gws.taut.py");
+    let schema = fs::read_to_string(root.join("protocol/gwz.taut.py"))
+        .expect("failed to read protocol/gwz.taut.py");
 
     assert!(
         !schema.contains("Msg(\""),
-        "protocol/gws.taut.py should name messages with schema keywords"
+        "protocol/gwz.taut.py should name messages with schema keywords"
     );
     assert!(
         !schema.contains("Enum(\""),
-        "protocol/gws.taut.py should name enums with schema keywords"
+        "protocol/gwz.taut.py should name enums with schema keywords"
     );
     assert!(
         !schema.contains("F(\""),
-        "protocol/gws.taut.py should name fields with Msg keywords"
+        "protocol/gwz.taut.py should name fields with Msg keywords"
     );
     assert!(
         !schema.contains("Ref(\""),
-        "protocol/gws.taut.py should reference messages and enums with Ref attributes"
+        "protocol/gwz.taut.py should reference messages and enums with Ref attributes"
     );
     assert!(
         !schema.contains("params=[("),
-        "protocol/gws.taut.py should name method params with Params keywords"
+        "protocol/gwz.taut.py should name method params with Params keywords"
     );
 }
 
@@ -276,9 +276,9 @@ fn attribution() -> OperationAttribution {
     }
 }
 
-fn member_error() -> GwsError {
-    GwsError {
-        code: GwsErrorCode::DivergedMember,
+fn member_error() -> GwzError {
+    GwzError {
+        code: GwzErrorCode::DivergedMember,
         message: "member diverged".to_owned(),
         member_id: Some("core".to_owned()),
         member_path: Some("libs/core".to_owned()),
@@ -290,7 +290,7 @@ fn taut_command(root: &Path) -> Command {
     let mut command = Command::new("python3");
     let taut_src = root
         .parent()
-        .expect("gws-core should have a parent")
+        .expect("gwz-core should have a parent")
         .join("taut/src");
     command
         .current_dir(root)

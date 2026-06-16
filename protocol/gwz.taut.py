@@ -1,10 +1,10 @@
-"""GWS v0 taut protocol schema."""
+"""GWZ v0 taut protocol schema."""
 
 from taut.ir.dsl import BOOL, BYTES, INT, STR, Enum, F, List, Msg, Params, Ref, method, schema, service
 
 SCHEMA = schema(
     # ---- service ----------------------------------------------------------
-    service("GwsCore",
+    service("GwzCore",
         # Create an empty workspace artifact set.
         method("create_workspace", role="in",
                params=Params(request=Ref.CreateWorkspaceRequest),
@@ -33,7 +33,7 @@ SCHEMA = schema(
         method("snapshot", role="in",
                params=Params(request=Ref.SnapshotRequest),
                out=Ref.SnapshotResponse),
-        # Capture selected member state by GWS tag name.
+        # Capture selected member state by GWZ tag name.
         method("tag", role="in",
                params=Params(request=Ref.TagRequest),
                out=Ref.TagResponse),
@@ -181,7 +181,7 @@ SCHEMA = schema(
          error=3),
 
     # Stable protocol error codes.
-    GwsErrorCode=Enum(
+    GwzErrorCode=Enum(
          ok=0,
          invalid_request=1,
          workspace_not_found=2,
@@ -303,8 +303,8 @@ SCHEMA = schema(
         attribution=F(7, Ref.OperationAttribution, optional=True)),
 
     # Typed error with optional member context.
-    GwsError=Msg(
-        code=F(1, Ref.GwsErrorCode),
+    GwzError=Msg(
+        code=F(1, Ref.GwzErrorCode),
         # Human-readable diagnostic.
         message=F(2, STR),
         member_id=F(3, STR, optional=True),
@@ -327,7 +327,7 @@ SCHEMA = schema(
     DesiredRef=Msg(
         branch=F(1, STR, optional=True),
         commit=F(2, STR, optional=True),
-        # Git tag name; distinct from GWS workspace tags.
+        # Git tag name; distinct from GWZ workspace tags.
         git_tag=F(3, STR, optional=True),
         # Member has no authoritative remote target.
         local_only=F(4, BOOL, optional=True)),
@@ -471,7 +471,7 @@ SCHEMA = schema(
         source_kind=F(3, Ref.SourceKind),
         status=F(4, Ref.MemberStatus),
         # Member-scoped error when this member failed or was rejected.
-        error=F(5, Ref.GwsError, optional=True),
+        error=F(5, Ref.GwzError, optional=True),
         # Planned mutation for dry-run or accepted responses.
         planned=F(6, Ref.PlannedChange, optional=True),
         # Resolved member state after execution or planning.
@@ -484,7 +484,7 @@ SCHEMA = schema(
     ResponseEnvelope=Msg(
         meta=F(1, Ref.ResponseMeta),
         members=F(2, List(Ref.MemberResponse)),
-        errors=F(3, List(Ref.GwsError))),
+        errors=F(3, List(Ref.GwzError))),
 
     # Durable/progressive operation event.
     OperationEvent=Msg(
@@ -501,7 +501,7 @@ SCHEMA = schema(
         message=F(9, STR, optional=True),
         # Optional member snapshot associated with this event.
         member=F(10, Ref.MemberResponse, optional=True),
-        error=F(11, Ref.GwsError, optional=True),
+        error=F(11, Ref.GwzError, optional=True),
         attribution=F(12, Ref.OperationAttribution, optional=True)),
 
     # Final operation record returned by operation.result.
@@ -515,14 +515,14 @@ SCHEMA = schema(
         # Unix epoch milliseconds when execution finished.
         finished_at_ms=F(6, INT),
         members=F(7, List(Ref.MemberResponse)),
-        errors=F(8, List(Ref.GwsError)),
+        errors=F(8, List(Ref.GwzError)),
         attribution=F(9, Ref.OperationAttribution, optional=True)),
 
     # ---- action requests --------------------------------------------------
     # Create an empty workspace at workspace_root.
     CreateWorkspaceRequest=Msg(
         meta=F(1, Ref.RequestMeta),
-        # Target directory that will receive workspace/gws.yml and lock.
+        # Target directory that will receive workspace/gwz.yml and lock.
         workspace_root=F(2, STR),
         # Optional workspace id; defaults when absent.
         workspace_id=F(3, STR, optional=True)),
@@ -582,7 +582,7 @@ SCHEMA = schema(
         meta=F(1, Ref.RequestMeta),
         snapshot_id=F(2, STR)),
 
-    # Write a named GWS tag for the selected members.
+    # Write a named GWZ tag for the selected members.
     TagRequest=Msg(
         meta=F(1, Ref.RequestMeta),
         tag_name=F(2, STR)),

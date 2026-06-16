@@ -538,8 +538,8 @@ fn member_execution_to_protocol(member: &MemberExecution) -> crate::MemberRespon
     }
 }
 
-fn operation_error_to_protocol(error: &OperationError) -> crate::GwsError {
-    crate::GwsError {
+fn operation_error_to_protocol(error: &OperationError) -> crate::GwzError {
+    crate::GwzError {
         code: error.code.into(),
         message: error.message.clone(),
         member_id: None,
@@ -703,7 +703,7 @@ mod tests {
         assert_eq!(result.operation_id, "op_0001");
         assert_eq!(result.aggregate_status, crate::AggregateStatus::Rejected);
         assert_eq!(result.members[0].status, crate::MemberStatus::Rejected);
-        assert_eq!(result.errors[0].code, crate::GwsErrorCode::DivergedMember);
+        assert_eq!(result.errors[0].code, crate::GwzErrorCode::DivergedMember);
         assert_eq!(
             result
                 .attribution
@@ -719,7 +719,7 @@ mod tests {
         let request = crate::StatusRequest {
             meta: crate::RequestMeta {
                 request_id: "req-1".to_owned(),
-                schema_version: "gws.v0".to_owned(),
+                schema_version: "gwz.v0".to_owned(),
                 dry_run: Some(true),
                 attribution: Some(crate::OperationAttribution::from(&sample_attribution())),
                 ..crate::RequestMeta::default()
@@ -903,7 +903,7 @@ mod tests {
         OperationContext {
             operation_id: "op_0001".to_owned(),
             request_id: "req-1".to_owned(),
-            schema_version: "gws.v0".to_owned(),
+            schema_version: "gwz.v0".to_owned(),
             action: ActionKind::Status,
             dry_run,
             attribution: Some(sample_attribution()),

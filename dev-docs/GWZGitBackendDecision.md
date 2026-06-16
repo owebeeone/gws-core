@@ -1,10 +1,10 @@
-# GWS Git Backend Decision
+# GWZ Git Backend Decision
 
 Status: accepted for v0
 
 ## Decision
 
-GWS Core v0 uses `git2` behind the internal `GitBackend` trait, with SSH and
+GWZ Core v0 uses `git2` behind the internal `GitBackend` trait, with SSH and
 HTTPS transport support enabled.
 
 The backend boundary remains mandatory. Public APIs MUST NOT expose `git2`
@@ -37,7 +37,7 @@ The v0 `git2` implementation passed local, networkless fixture tests for:
 - fast-forward update from a fetched remote-tracking ref
 - checkout of a specific commit into detached HEAD state
 
-GWS configures explicit remote callbacks for clone, fetch, and push.
+GWZ configures explicit remote callbacks for clone, fetch, and push.
 `Git2Backend::new()` supports SSH-agent credentials, username-only SSH prompts,
 default platform credentials, and configured Git credential helpers for HTTPS
 username/password credentials. `Git2Backend::without_credential_helpers()`
@@ -45,7 +45,7 @@ disables credential helper execution for sandboxed callers.
 
 ## Consequences
 
-GWS Core can proceed with the v0 workspace operations without shelling out to
+GWZ Core can proceed with the v0 workspace operations without shelling out to
 `git` as the primary implementation.
 
 Future gix work MAY add another implementation behind the same `GitBackend`

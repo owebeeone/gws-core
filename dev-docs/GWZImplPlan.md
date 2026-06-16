@@ -1,23 +1,23 @@
-# GWS Implementation Plan
+# GWZ Implementation Plan
 
 Status: bootstrapped through Step 17
 
-Source design: `GWSDesign.md`.
+Source design: `GWZDesign.md`.
 
 This plan builds two independent repositories:
 
 ```text
-gws-core
+gwz-core
   Rust library crate. Owns model, artifacts, protocol, operations, Git backend,
   runtime, and tests.
 
-gws-cli
-  Rust CLI crate. Parses argv, builds taut/GWS requests, calls `gws-core`, and
+gwz-cli
+  Rust CLI crate. Parses argv, builds taut/GWZ requests, calls `gwz-core`, and
   renders responses/events.
 ```
 
-For v0 development, `gws-cli` uses a local path dependency on `../gws-core`.
-`gws-core` must not depend on `gws-cli`.
+For v0 development, `gwz-cli` uses a local path dependency on `../gwz-core`.
+`gwz-core` must not depend on `gwz-cli`.
 
 Step size target: each implementation step should stay around 500 hand-written
 LOC or less. Generated protocol code, golden fixtures, copied ignore files, and
@@ -35,8 +35,8 @@ Accepted implementation decisions:
   fast-forward, checkout, status, and push against local fixtures.
 - V0 uses generated Rust protocol types from taut. Hand-maintained shadow
   protocol structs are not allowed.
-- V0 artifact filenames follow `GWSDesign.md`: `workspace/gws.yml` and
-  `workspace/gws.lock.yml`. Older flat filename text is superseded.
+- V0 artifact filenames follow `GWZDesign.md`: `workspace/gwz.yml` and
+  `workspace/gwz.lock.yml`. Older flat filename text is superseded.
 - V0 Rust toolchain is pinned to Rust `1.95.0`, matching the active local Rust
   workstream repos.
 
@@ -44,8 +44,8 @@ Accepted implementation decisions:
 
 Scope:
 
-- Create the independent `gws-cli` repository.
-- Add `.gitignore` to both `gws-core` and `gws-cli`.
+- Create the independent `gwz-cli` repository.
+- Add `.gitignore` to both `gwz-core` and `gwz-cli`.
 - Ignore `scratch/` in both repositories.
 - Match the local Rust repo ignore conventions:
   - `.DS_Store`
@@ -56,47 +56,47 @@ Scope:
 
 Deliverables:
 
-- `gws-core/.gitignore`
-- `gws-cli/.gitignore`
-- Empty initialized `gws-cli` Git repository
+- `gwz-core/.gitignore`
+- `gwz-cli/.gitignore`
+- Empty initialized `gwz-cli` Git repository
 
 Acceptance:
 
-- `git -C gws-core status --short` shows the new ignore file and docs only.
-- `git -C gws-cli status --short` shows only intended starter files.
+- `git -C gwz-core status --short` shows the new ignore file and docs only.
+- `git -C gwz-cli status --short` shows only intended starter files.
 - `scratch/` is ignored in both repos.
 
 ## Step 1: Rust Crate Bootstrap
 
 Scope:
 
-- Add minimal Rust project scaffolding to `gws-core`.
-- Add minimal Rust project scaffolding to `gws-cli`.
+- Add minimal Rust project scaffolding to `gwz-core`.
+- Add minimal Rust project scaffolding to `gwz-cli`.
 - Keep both repos buildable before any real behavior exists.
 
 Deliverables:
 
-- `gws-core/Cargo.toml`
-- `gws-core/Cargo.lock`
-- `gws-core/src/lib.rs`
-- `gws-core/src/runtime/clock.rs`
-- `gws-core/src/runtime/ids.rs`
-- `gws-core/README.md`
-- `gws-core/AGENTS.md`
-- `gws-core/rust-toolchain.toml`
-- `gws-cli/Cargo.toml`
-- `gws-cli/Cargo.lock`
-- `gws-cli/src/main.rs`
-- `gws-cli/README.md`
-- `gws-cli/AGENTS.md`
-- `gws-cli/rust-toolchain.toml`
+- `gwz-core/Cargo.toml`
+- `gwz-core/Cargo.lock`
+- `gwz-core/src/lib.rs`
+- `gwz-core/src/runtime/clock.rs`
+- `gwz-core/src/runtime/ids.rs`
+- `gwz-core/README.md`
+- `gwz-core/AGENTS.md`
+- `gwz-core/rust-toolchain.toml`
+- `gwz-cli/Cargo.toml`
+- `gwz-cli/Cargo.lock`
+- `gwz-cli/src/main.rs`
+- `gwz-cli/README.md`
+- `gwz-cli/AGENTS.md`
+- `gwz-cli/rust-toolchain.toml`
 
 Implementation notes:
 
-- `gws-core` should expose a tiny placeholder API such as `version()`.
+- `gwz-core` should expose a tiny placeholder API such as `version()`.
 - Add minimal injectable clock/id-provider traits early so protocol corpus and
   artifact golden tests can be deterministic.
-- `gws-cli` should depend on `gws-core` through `path = "../gws-core"` for local
+- `gwz-cli` should depend on `gwz-core` through `path = "../gwz-core"` for local
   development.
 - Pin both repos to Rust `1.95.0`.
 - Do not add Git behavior yet.
@@ -105,9 +105,9 @@ Implementation notes:
 Acceptance:
 
 - Both repos include `rust-toolchain.toml` pinning Rust `1.95.0`.
-- `cargo test` passes in `gws-core`.
-- `cargo test` passes in `gws-cli`.
-- `cargo run -- --version` works in `gws-cli`.
+- `cargo test` passes in `gwz-core`.
+- `cargo test` passes in `gwz-cli`.
+- `cargo run -- --version` works in `gwz-cli`.
 
 ## Step 2: Protocol Seed And Taut Corpus
 
@@ -119,10 +119,10 @@ Scope:
 
 Deliverables:
 
-- `gws-core/protocol/gws.taut.py`
-- generated Rust protocol module under `gws-core/src/protocol/`
+- `gwz-core/protocol/gwz.taut.py`
+- generated Rust protocol module under `gwz-core/src/protocol/`
 - a generated-code staleness test that fails when generated Rust drifts from
-  `gws.taut.py`
+  `gwz.taut.py`
 - minimal golden corpus for:
   - `StatusRequest`
   - `ResponseEnvelope`
@@ -189,11 +189,11 @@ Scope:
 Deliverables:
 
 - path validator for member paths
-- reserved-prefix checks for `workspace/` and `.gws/`
-- upward discovery for `workspace/gws.yml`
+- reserved-prefix checks for `workspace/` and `.gwz/`
+- upward discovery for `workspace/gwz.yml`
 - init-target handling that does not use upward discovery
 - nested-active-workspace rejection for active member roots that contain their
-  own `workspace/gws.yml`
+  own `workspace/gwz.yml`
 
 Implementation notes:
 
@@ -204,25 +204,25 @@ Acceptance:
 
 - Tests reject absolute paths.
 - Tests reject `..` escapes.
-- Tests reject `workspace/` and `.gws/`.
+- Tests reject `workspace/` and `.gwz/`.
 - Tests reject path collisions.
-- Tests prove `gws` run inside a member resolves to the workspace root.
-- Tests prove `gws init` targets the requested/current directory.
+- Tests prove `gwz` run inside a member resolves to the workspace root.
+- Tests prove `gwz init` targets the requested/current directory.
 - Tests reject adding or validating an active member root that contains its own
-  `workspace/gws.yml`.
+  `workspace/gwz.yml`.
 
 ## Step 5: Artifact I/O
 
 Scope:
 
-- Implement deterministic read/write for GWS-owned files.
+- Implement deterministic read/write for GWZ-owned files.
 
 Deliverables:
 
-- manifest parser/writer for `workspace/gws.yml`
-- lock parser/writer for `workspace/gws.lock.yml`
-- snapshot parser/writer for `.gws/snapshots/<id>.yaml`
-- GWS tag parser/writer for `workspace/tags/<name>.yml`
+- manifest parser/writer for `workspace/gwz.yml`
+- lock parser/writer for `workspace/gwz.lock.yml`
+- snapshot parser/writer for `.gwz/snapshots/<id>.yaml`
+- GWZ tag parser/writer for `workspace/tags/<name>.yml`
 - atomic write helper
 - golden artifact fixtures
 
@@ -231,9 +231,9 @@ Implementation notes:
 - Use structured YAML serialization rather than ad hoc text construction.
 - Keep ordering deterministic for useful diffs.
 - Manifest `remotes` must use the deterministic list form from
-  `GWSDesign.md`; duplicate remote names must fail validation.
+  `GWZDesign.md`; duplicate remote names must fail validation.
 - Include `created_by` in snapshot/tag artifacts.
-- Schema major versions are parsed from strings like `gws.workspace/v0`; the
+- Schema major versions are parsed from strings like `gwz.workspace/v0`; the
   integer after `/v` is the artifact major version. Protocol `schema_version`
   is versioned independently from artifact schemas.
 
@@ -346,7 +346,7 @@ Implementation notes:
 Acceptance:
 
 - Backend spike result and selected v0 backend are recorded in
-  `dev-docs/GWSGitBackendDecision.md`.
+  `dev-docs/GWZGitBackendDecision.md`.
 - Clone into an empty member path succeeds from a local temporary repository.
 - Clone into a non-empty path fails before mutation.
 - Temp repo status tests cover clean, dirty, staged, unstaged, and untracked.
@@ -420,29 +420,29 @@ Acceptance:
 - Create repo with no commits records no commit in the lock and materializes as
   `noop` until a commit exists.
 
-## Step 10: Snapshot And GWS Tag Operations
+## Step 10: Snapshot And GWZ Tag Operations
 
 Scope:
 
-- Implement GWS-owned snapshot and tag records.
+- Implement GWZ-owned snapshot and tag records.
 
 Deliverables:
 
 - `SnapshotRequest`
 - `TagRequest`
 - snapshot artifact writes
-- GWS tag artifact writes
+- GWZ tag artifact writes
 - materialize-target lookup helpers for snapshot/tag records
 
 Implementation notes:
 
-- GWS tags must not create Git tags.
+- GWZ tags must not create Git tags.
 - Snapshot and tag operations do not rewrite the lock.
 - Include selected member ids and resolved member states.
 
 Acceptance:
 
-- Snapshot writes `.gws/snapshots/<id>.yaml`.
+- Snapshot writes `.gwz/snapshots/<id>.yaml`.
 - Tag writes `workspace/tags/<name>.yml`.
 - Duplicate or invalid tag names fail cleanly.
 - Snapshot/tag responses include per-member results.
@@ -515,8 +515,8 @@ Acceptance:
 
 - Local-only pull returns per-member `noop`.
 - Clean fast-forward member updates.
-- Successful pull-to-head rewrites `workspace/gws.lock.yml`.
-- `gws init <local-url>...` can create a workspace, clone members to head, and
+- Successful pull-to-head rewrites `workspace/gwz.lock.yml`.
+- `gwz init <local-url>...` can create a workspace, clone members to head, and
   write the initial lock.
 - Dirty member blocks whole operation before mutation.
 - Diverged member blocks whole operation before mutation.
@@ -537,8 +537,8 @@ Deliverables:
 
 Implementation notes:
 
-- GWS Core passes credential references; it does not own credential storage.
-- Push does not write GWS artifacts by default.
+- GWZ Core passes credential references; it does not own credential storage.
+- Push does not write GWZ artifacts by default.
 - Remote rejection must map to a typed per-member result.
 
 Acceptance:
@@ -553,7 +553,7 @@ Acceptance:
 
 Scope:
 
-- Implement `gws-cli` command parsing and request construction.
+- Implement `gwz-cli` command parsing and request construction.
 
 Deliverables:
 
@@ -561,16 +561,16 @@ Deliverables:
 - request-id creation
 - workspace discovery integration
 - command mapping:
-  - `gws init`
-  - `gws init <url>...`
-  - `gws add <repo-path>`
-  - `gws repo create <member-path>`
-  - `gws materialize --lock|--head|--snapshot|--tag`
-  - `gws pull --head|--snapshot`
-  - `gws snapshot <name>`
-  - `gws tag <name>`
-  - `gws push`
-  - `gws status`
+  - `gwz init`
+  - `gwz init <url>...`
+  - `gwz add <repo-path>`
+  - `gwz repo create <member-path>`
+  - `gwz materialize --lock|--head|--snapshot|--tag`
+  - `gwz pull --head|--snapshot`
+  - `gwz snapshot <name>`
+  - `gwz tag <name>`
+  - `gwz push`
+  - `gwz status`
 - global flags:
   - `--root`
   - `--member`
@@ -588,7 +588,7 @@ Deliverables:
 Implementation notes:
 
 - CLI must not call Git directly.
-- CLI must not read or write GWS artifacts directly.
+- CLI must not read or write GWZ artifacts directly.
 - CLI local attribution fallback may use local Git config only if explicitly
   documented in the driver.
 
@@ -596,7 +596,7 @@ Acceptance:
 
 - Parser unit tests assert argv-to-request mappings.
 - Invalid command combinations fail before core execution.
-- CLI can call in-process `gws-core`.
+- CLI can call in-process `gwz-core`.
 
 ## Step 15: CLI Renderers
 
@@ -645,17 +645,17 @@ Implementation notes:
 
 Acceptance:
 
-- `gws init <local-url>... --jsonl` works.
-- fresh checkout with committed `workspace/gws.yml` and `workspace/gws.lock.yml`
-  can run `gws materialize --lock` and clone all missing members at locked
+- `gwz init <local-url>... --jsonl` works.
+- fresh checkout with committed `workspace/gwz.yml` and `workspace/gwz.lock.yml`
+  can run `gwz materialize --lock` and clone all missing members at locked
   commits.
-- `gws status --json` works from workspace root and inside a member.
-- `gws snapshot NAME` and `gws tag NAME` write expected artifacts.
-- `gws pull --head` fast-forwards clean local remote fixtures.
-- `gws push --remote <name>` pushes to a temporary bare repository.
-- `gws materialize --snapshot NAME` and `gws pull --snapshot NAME` work against
+- `gwz status --json` works from workspace root and inside a member.
+- `gwz snapshot NAME` and `gwz tag NAME` write expected artifacts.
+- `gwz pull --head` fast-forwards clean local remote fixtures.
+- `gwz push --remote <name>` pushes to a temporary bare repository.
+- `gwz materialize --snapshot NAME` and `gwz pull --snapshot NAME` work against
   local fixtures.
-- `gws add <repo-path>`, `gws repo create <member-path>`, and representative
+- `gwz add <repo-path>`, `gwz repo create <member-path>`, and representative
   `--dry-run` commands have CLI integration coverage.
 - Failure scenario proves atomic preflight prevents partial mutation.
 
@@ -667,8 +667,8 @@ Scope:
 
 Deliverables:
 
-- `gws-core/README.md` updated with library scope and test commands.
-- `gws-cli/README.md` updated with CLI examples.
+- `gwz-core/README.md` updated with library scope and test commands.
+- `gwz-cli/README.md` updated with CLI examples.
 - short protocol/codegen note.
 - known deferrals list:
   - source catalog persistence
@@ -677,7 +677,7 @@ Deliverables:
   - branch/merge selection
   - alternate Git storage backends
   - remote capability enforcement
-  - persistent `.gws/operations/<operation-id>.jsonl` event logs
+  - persistent `.gwz/operations/<operation-id>.jsonl` event logs
 
 Acceptance:
 

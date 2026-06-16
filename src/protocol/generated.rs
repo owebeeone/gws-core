@@ -396,7 +396,7 @@ impl Severity {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub enum GwsErrorCode {
+pub enum GwzErrorCode {
     #[default] Ok,
     InvalidRequest,
     WorkspaceNotFound,
@@ -428,7 +428,7 @@ pub enum GwsErrorCode {
     IoError,
     InternalError,
 }
-impl GwsErrorCode {
+impl GwzErrorCode {
     pub fn wire(self) -> i64 { match self {
         Self::Ok => 0,
         Self::InvalidRequest => 1,
@@ -492,7 +492,7 @@ impl GwsErrorCode {
         27 => Self::PermissionDenied,
         28 => Self::IoError,
         29 => Self::InternalError,
-        _ => panic!("bad GwsErrorCode wire value {}", v),
+        _ => panic!("bad GwzErrorCode wire value {}", v),
     } }
 }
 
@@ -720,14 +720,14 @@ impl ResponseMeta {
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
-pub struct GwsError {
-    pub code: GwsErrorCode,
+pub struct GwzError {
+    pub code: GwzErrorCode,
     pub message: String,
     pub member_id: Option<String>,
     pub member_path: Option<String>,
     pub detail: Option<String>,
 }
-impl GwsError {
+impl GwzError {
     pub fn to_cbor(&self) -> Cbor {
         Cbor::Map(vec![
             (1, Cbor::Int(self.code.wire())),
@@ -739,7 +739,7 @@ impl GwsError {
     }
     pub fn from_cbor(c: &Cbor) -> Self {
         Self {
-            code: GwsErrorCode::from_wire(c.get(1).int()),
+            code: GwzErrorCode::from_wire(c.get(1).int()),
             message: c.get(2).text(),
             member_id: { let v = c.get(3); if v.is_null() { None } else { Some(v.text()) } },
             member_path: { let v = c.get(4); if v.is_null() { None } else { Some(v.text()) } },
@@ -1170,7 +1170,7 @@ pub struct MemberResponse {
     pub member_path: String,
     pub source_kind: SourceKind,
     pub status: MemberStatus,
-    pub error: Option<GwsError>,
+    pub error: Option<GwzError>,
     pub planned: Option<PlannedChange>,
     pub state: Option<ResolvedMemberState>,
     pub git_status: Option<GitStatus>,
@@ -1196,7 +1196,7 @@ impl MemberResponse {
             member_path: c.get(2).text(),
             source_kind: SourceKind::from_wire(c.get(3).int()),
             status: MemberStatus::from_wire(c.get(4).int()),
-            error: { let v = c.get(5); if v.is_null() { None } else { Some(GwsError::from_cbor(v)) } },
+            error: { let v = c.get(5); if v.is_null() { None } else { Some(GwzError::from_cbor(v)) } },
             planned: { let v = c.get(6); if v.is_null() { None } else { Some(PlannedChange::from_cbor(v)) } },
             state: { let v = c.get(7); if v.is_null() { None } else { Some(ResolvedMemberState::from_cbor(v)) } },
             git_status: { let v = c.get(8); if v.is_null() { None } else { Some(GitStatus::from_cbor(v)) } },
@@ -1209,7 +1209,7 @@ impl MemberResponse {
 pub struct ResponseEnvelope {
     pub meta: ResponseMeta,
     pub members: Vec<MemberResponse>,
-    pub errors: Vec<GwsError>,
+    pub errors: Vec<GwzError>,
 }
 impl ResponseEnvelope {
     pub fn to_cbor(&self) -> Cbor {
@@ -1223,7 +1223,7 @@ impl ResponseEnvelope {
         Self {
             meta: ResponseMeta::from_cbor(c.get(1)),
             members: c.get(2).array().iter().map(|x| MemberResponse::from_cbor(x)).collect(),
-            errors: c.get(3).array().iter().map(|x| GwsError::from_cbor(x)).collect(),
+            errors: c.get(3).array().iter().map(|x| GwzError::from_cbor(x)).collect(),
         }
     }
 }
@@ -1240,7 +1240,7 @@ pub struct OperationEvent {
     pub member_path: Option<String>,
     pub message: Option<String>,
     pub member: Option<MemberResponse>,
-    pub error: Option<GwsError>,
+    pub error: Option<GwzError>,
     pub attribution: Option<OperationAttribution>,
 }
 impl OperationEvent {
@@ -1272,7 +1272,7 @@ impl OperationEvent {
             member_path: { let v = c.get(8); if v.is_null() { None } else { Some(v.text()) } },
             message: { let v = c.get(9); if v.is_null() { None } else { Some(v.text()) } },
             member: { let v = c.get(10); if v.is_null() { None } else { Some(MemberResponse::from_cbor(v)) } },
-            error: { let v = c.get(11); if v.is_null() { None } else { Some(GwsError::from_cbor(v)) } },
+            error: { let v = c.get(11); if v.is_null() { None } else { Some(GwzError::from_cbor(v)) } },
             attribution: { let v = c.get(12); if v.is_null() { None } else { Some(OperationAttribution::from_cbor(v)) } },
         }
     }
@@ -1287,7 +1287,7 @@ pub struct OperationResult {
     pub started_at_ms: i64,
     pub finished_at_ms: i64,
     pub members: Vec<MemberResponse>,
-    pub errors: Vec<GwsError>,
+    pub errors: Vec<GwzError>,
     pub attribution: Option<OperationAttribution>,
 }
 impl OperationResult {
@@ -1313,7 +1313,7 @@ impl OperationResult {
             started_at_ms: c.get(5).int(),
             finished_at_ms: c.get(6).int(),
             members: c.get(7).array().iter().map(|x| MemberResponse::from_cbor(x)).collect(),
-            errors: c.get(8).array().iter().map(|x| GwsError::from_cbor(x)).collect(),
+            errors: c.get(8).array().iter().map(|x| GwzError::from_cbor(x)).collect(),
             attribution: { let v = c.get(9); if v.is_null() { None } else { Some(OperationAttribution::from_cbor(v)) } },
         }
     }

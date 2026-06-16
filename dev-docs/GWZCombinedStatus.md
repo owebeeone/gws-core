@@ -1,6 +1,6 @@
-# GWS Combined Status
+# GWZ Combined Status
 
-`gws status` returns a workspace-level status view that is equivalent in spirit
+`gwz status` returns a workspace-level status view that is equivalent in spirit
 to running `git status` across every selected member and merging the result into
 one stable view.
 
@@ -19,24 +19,24 @@ one stable view.
 Default combined mode:
 
 ```text
-gws status
+gwz status
 ```
 
 Useful variants:
 
 ```text
-gws status --combined
-gws status --json
-gws status --jsonl
-gws status --porcelain
-gws status --no-files
-gws status --no-branches
-gws status --no-combined
+gwz status --combined
+gwz status --json
+gwz status --jsonl
+gwz status --porcelain
+gwz status --no-files
+gwz status --no-branches
+gwz status --no-combined
 ```
 
 Rules:
 
-- `gws status` MUST request workspace-level Git status data by default.
+- `gwz status` MUST request workspace-level Git status data by default.
 - `--combined` MAY be accepted as an explicit spelling of the default.
 - `--no-combined` MUST request the per-member summary status mode.
 - `--porcelain` MUST imply `--combined`.
@@ -102,7 +102,7 @@ Each file record MUST include:
 - `member_id`
 - `member_path`
 - `repo_path`, relative to the member repository
-- `workspace_path`, relative to the GWS workspace root
+- `workspace_path`, relative to the GWZ workspace root
 - `index_status`
 - `worktree_status`
 - optional `original_repo_path` for rename/copy-style status

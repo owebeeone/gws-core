@@ -289,13 +289,13 @@ impl GitObjectIdentity {
     pub fn validate(&self) -> ModelResult<()> {
         require_non_empty("git_identity.name", &self.name)?;
         require_non_empty("git_identity.email", &self.email)?;
-        if let Some(offset) = self.timezone_offset_minutes {
-            if !(-1_440..=1_440).contains(&offset) {
-                return Err(ModelError::new(
-                    ErrorCode::InvalidRequest,
-                    "git identity timezone offset is out of range",
-                ));
-            }
+        if let Some(offset) = self.timezone_offset_minutes
+            && !(-1_440..=1_440).contains(&offset)
+        {
+            return Err(ModelError::new(
+                ErrorCode::InvalidRequest,
+                "git identity timezone offset is out of range",
+            ));
         }
         Ok(())
     }

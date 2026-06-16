@@ -2,7 +2,7 @@ use crate::model;
 
 use super::generated;
 
-impl From<model::ErrorCode> for generated::GwsErrorCode {
+impl From<model::ErrorCode> for generated::GwzErrorCode {
     fn from(value: model::ErrorCode) -> Self {
         match value {
             model::ErrorCode::Ok => Self::Ok,
@@ -147,7 +147,7 @@ impl From<&model::OperationPolicy> for generated::OperationPolicy {
     }
 }
 
-impl From<&model::ModelError> for generated::GwsError {
+impl From<&model::ModelError> for generated::GwzError {
     fn from(value: &model::ModelError) -> Self {
         Self {
             code: value.code.into(),
@@ -219,8 +219,8 @@ mod tests {
 
     #[test]
     fn model_error_codes_convert_to_protocol_codes() {
-        let code: generated::GwsErrorCode = model::ErrorCode::DivergedMember.into();
-        assert_eq!(code, generated::GwsErrorCode::DivergedMember);
+        let code: generated::GwzErrorCode = model::ErrorCode::DivergedMember.into();
+        assert_eq!(code, generated::GwzErrorCode::DivergedMember);
         assert_eq!(code.wire(), 16);
     }
 }

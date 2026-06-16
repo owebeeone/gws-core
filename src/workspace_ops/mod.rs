@@ -258,13 +258,13 @@ where
 
     if root.join(WORKSPACE_MANIFEST).exists() {
         let manifest = artifact::read_manifest(&root)?;
-        if let Some(expected) = &request.workspace_id {
-            if expected != &manifest.workspace.id {
-                return Err(ModelError::new(
-                    ErrorCode::WorkspaceNotFound,
-                    "workspace id does not match manifest",
-                ));
-            }
+        if let Some(expected) = &request.workspace_id
+            && expected != &manifest.workspace.id
+        {
+            return Err(ModelError::new(
+                ErrorCode::WorkspaceNotFound,
+                "workspace id does not match manifest",
+            ));
         }
         let plans = init_source_plans(&manifest, &request.sources)?;
         return Ok(crate::InitFromSourcesResponse {
@@ -404,7 +404,7 @@ pub fn handle_tag(
     if tag_path.exists() {
         return Err(ModelError::new(
             ErrorCode::TagInvalid,
-            "GWS tag already exists",
+            "GWZ tag already exists",
         ));
     }
 
@@ -676,13 +676,13 @@ fn assert_workspace_id(
     manifest: &ManifestArtifact,
     workspace: Option<&crate::WorkspaceRef>,
 ) -> ModelResult<()> {
-    if let Some(expected) = workspace.and_then(|workspace| workspace.workspace_id.as_ref()) {
-        if expected != &manifest.workspace.id {
-            return Err(ModelError::new(
-                ErrorCode::WorkspaceNotFound,
-                "workspace id does not match manifest",
-            ));
-        }
+    if let Some(expected) = workspace.and_then(|workspace| workspace.workspace_id.as_ref())
+        && expected != &manifest.workspace.id
+    {
+        return Err(ModelError::new(
+            ErrorCode::WorkspaceNotFound,
+            "workspace id does not match manifest",
+        ));
     }
     Ok(())
 }
@@ -1614,7 +1614,7 @@ fn push_member_error(
         member_path: member.path.clone(),
         source_kind,
         status,
-        error: Some(crate::GwsError {
+        error: Some(crate::GwzError {
             code: error.code.into(),
             message: error.message,
             member_id: Some(member.id.clone()),
@@ -2104,7 +2104,7 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_and_invalid_gws_tags_fail_cleanly() {
+    fn duplicate_and_invalid_gwz_tags_fail_cleanly() {
         let temp = TempDir::new("tag-errors");
         let backend = Git2Backend::new();
         handle_create_workspace(create_workspace_request(temp.path()), "op_create").unwrap();
@@ -2605,7 +2605,7 @@ mod tests {
                 .as_ref()
                 .unwrap()
                 .code,
-            crate::GwsErrorCode::MissingRemote
+            crate::GwzErrorCode::MissingRemote
         );
 
         let skipped = handle_push(
@@ -2661,7 +2661,7 @@ mod tests {
         assert_eq!(member.status, crate::MemberStatus::Failed);
         assert_eq!(
             member.error.as_ref().unwrap().code,
-            crate::GwsErrorCode::RemoteRejected
+            crate::GwzErrorCode::RemoteRejected
         );
         assert_eq!(
             read_repo_ref(Path::new(fixture.remote_url()), "refs/heads/main"),
@@ -2705,7 +2705,7 @@ mod tests {
         index.write()?;
         let tree_id = index.write_tree()?;
         let tree = repo.find_tree(tree_id)?;
-        let signature = git2::Signature::now("GWS Test", "gws@example.invalid")?;
+        let signature = git2::Signature::now("GWZ Test", "gwz@example.invalid")?;
         let parent_commits = parents
             .iter()
             .map(|id| repo.find_commit(*id))
@@ -2726,7 +2726,7 @@ mod tests {
     fn request_meta() -> crate::RequestMeta {
         crate::RequestMeta {
             request_id: "req_ops".to_owned(),
-            schema_version: "gws.protocol/v0".to_owned(),
+            schema_version: "gwz.protocol/v0".to_owned(),
             ..Default::default()
         }
     }
@@ -3090,7 +3090,7 @@ mod tests {
                 .unwrap()
                 .as_nanos();
             let path = std::env::temp_dir().join(format!(
-                "gws-core-ops-{prefix}-{}-{unique}",
+                "gwz-core-ops-{prefix}-{}-{unique}",
                 std::process::id()
             ));
             fs::create_dir_all(&path).unwrap();

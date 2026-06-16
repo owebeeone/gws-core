@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TimestampMs(pub i64);
 
 pub trait Clock {
@@ -19,12 +19,6 @@ impl FixedClock {
 impl Clock for FixedClock {
     fn now_ms(&self) -> TimestampMs {
         self.now
-    }
-}
-
-impl Default for TimestampMs {
-    fn default() -> Self {
-        Self(0)
     }
 }
 

@@ -4,8 +4,8 @@ use std::path::{Component, Path, PathBuf};
 use crate::model::{ErrorCode, ModelError, ModelResult};
 
 pub const WORKSPACE_DIR: &str = "workspace";
-pub const WORKSPACE_MANIFEST: &str = "workspace/gws.yml";
-pub const RUNTIME_DIR: &str = ".gws";
+pub const WORKSPACE_MANIFEST: &str = "workspace/gwz.yml";
+pub const RUNTIME_DIR: &str = ".gwz";
 
 #[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct MemberPath(String);
@@ -42,7 +42,7 @@ impl MemberPath {
         ) {
             return Err(ModelError::new(
                 ErrorCode::PathReserved,
-                "member path uses a reserved GWS prefix",
+                "member path uses a reserved GWZ prefix",
             ));
         }
 
@@ -101,7 +101,7 @@ pub fn preflight_create_workspace(target: &Path) -> ModelResult<&Path> {
     if target.join(WORKSPACE_MANIFEST).exists() {
         return Err(ModelError::new(
             ErrorCode::WorkspaceAlreadyExists,
-            "target already contains a GWS workspace",
+            "target already contains a GWZ workspace",
         ));
     }
 
@@ -110,7 +110,7 @@ pub fn preflight_create_workspace(target: &Path) -> ModelResult<&Path> {
         if parent.join(WORKSPACE_MANIFEST).exists() {
             return Err(ModelError::new(
                 ErrorCode::NestedWorkspace,
-                "cannot create a GWS workspace inside another GWS workspace",
+                "cannot create a GWZ workspace inside another GWZ workspace",
             ));
         }
         current = parent.parent();
@@ -132,7 +132,7 @@ pub fn reject_nested_active_workspace(
     {
         Err(ModelError::new(
             ErrorCode::NestedWorkspace,
-            "active member root contains a nested GWS workspace",
+            "active member root contains a nested GWZ workspace",
         ))
     } else {
         Ok(())
@@ -178,7 +178,7 @@ mod tests {
             ErrorCode::PathReserved
         );
         assert_eq!(
-            MemberPath::parse(".gws/runtime").unwrap_err().code,
+            MemberPath::parse(".gwz/runtime").unwrap_err().code,
             ErrorCode::PathReserved
         );
         assert_eq!(
@@ -222,7 +222,7 @@ mod tests {
         touch_workspace_manifest(temp.path());
         let child = temp.path().join("ordinary/child");
         fs::create_dir_all(&child).unwrap();
-        fs::write(child.join("README.md"), "not a gws workspace").unwrap();
+        fs::write(child.join("README.md"), "not a gwz workspace").unwrap();
 
         assert_eq!(
             preflight_create_workspace(temp.path()).unwrap_err().code,
@@ -262,7 +262,7 @@ mod tests {
 
     fn touch_workspace_manifest(root: &Path) {
         fs::create_dir_all(root.join(WORKSPACE_DIR)).unwrap();
-        fs::write(root.join(WORKSPACE_MANIFEST), "schema: gws.workspace/v0\n").unwrap();
+        fs::write(root.join(WORKSPACE_MANIFEST), "schema: gwz.workspace/v0\n").unwrap();
     }
 
     struct TempDir {
@@ -276,7 +276,7 @@ mod tests {
                 .unwrap()
                 .as_nanos();
             let path = std::env::temp_dir()
-                .join(format!("gws-core-{name}-{}-{unique}", std::process::id()));
+                .join(format!("gwz-core-{name}-{}-{unique}", std::process::id()));
             fs::create_dir_all(&path).unwrap();
             Self { path }
         }

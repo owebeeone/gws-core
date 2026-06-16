@@ -1,5 +1,5 @@
 [package]
-name = "gws-core"
+name = "gwz-core"
 version = "0.1.0"
 edition = "2024"
 license = "GPL-2.0-only"

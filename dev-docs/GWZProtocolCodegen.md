@@ -1,11 +1,11 @@
-# GWS Protocol Codegen
+# GWZ Protocol Codegen
 
-GWS Core uses taut as the protocol authority for v0 request, response, event,
+GWZ Core uses taut as the protocol authority for v0 request, response, event,
 and result messages.
 
 ## Source
 
-- Schema: `protocol/gws.taut.py`
+- Schema: `protocol/gwz.taut.py`
 - Generated Rust: `src/protocol/generated.rs` and supporting protocol modules
 - Conformance tests: `tests/protocol.rs`
 
@@ -14,7 +14,7 @@ build without running the generator during normal compilation.
 
 ## Rules
 
-- Protocol schema changes MUST start in `protocol/gws.taut.py`.
+- Protocol schema changes MUST start in `protocol/gwz.taut.py`.
 - Generated Rust MUST NOT be hand-edited.
 - Regenerated output MUST pass `cargo test`.
 - Wire enum values covered by protocol tests MUST stay stable unless a protocol
@@ -22,6 +22,6 @@ build without running the generator during normal compilation.
 
 ## Deferred Protocol Work
 
-- Persistent operation logs under `.gws/operations/<operation-id>.jsonl`.
+- Persistent operation logs under `.gwz/operations/<operation-id>.jsonl`.
 - Transport bindings beyond in-process request/response use.
 - Expanded source catalog messages after v0 manifest-local source records.

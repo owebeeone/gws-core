@@ -1,8 +1,8 @@
-# GWS Core Requirements
+# GWZ Core Requirements
 
 Status: complete
 
-GWS Core is a standalone library for defining, materializing, observing, and
+GWZ Core is a standalone library for defining, materializing, observing, and
 operating on a workspace made from independently owned sources.
 
 This document is a requirements document. It defines required behavior,
@@ -21,26 +21,26 @@ implementation design.
 
 ## Goals
 
-- GWS Core MUST define a workspace containing repositories, packages, archives,
+- GWZ Core MUST define a workspace containing repositories, packages, archives,
   local sources, and generated members.
-- GWS Core MUST provide APIs for materializing, synchronizing, pushing,
+- GWZ Core MUST provide APIs for materializing, synchronizing, pushing,
   tagging, snapshotting, and observing workspace members.
-- GWS Core MUST remain independent from any specific CLI, build tool, UI,
+- GWZ Core MUST remain independent from any specific CLI, build tool, UI,
   hosted forge, or application runtime.
-- GWS Core MUST support high-concurrency workspace operations while keeping each
+- GWZ Core MUST support high-concurrency workspace operations while keeping each
   member's mutating operations serialized by default.
-- GWS Core MUST expose a message-oriented API so callers can observe progress
+- GWZ Core MUST expose a message-oriented API so callers can observe progress
   without blocking on final operation completion.
 
 ## Non-Goals
 
-- GWS Core MUST NOT be a build system.
-- GWS Core MUST NOT be a package registry.
-- GWS Core MUST NOT be a hosted Git service.
-- GWS Core MUST NOT require a daemon.
-- GWS Core MUST NOT require Git submodules.
-- GWS Core MUST NOT own credential storage.
-- GWS Core v0 MUST NOT require a source catalog separate from the workspace
+- GWZ Core MUST NOT be a build system.
+- GWZ Core MUST NOT be a package registry.
+- GWZ Core MUST NOT be a hosted Git service.
+- GWZ Core MUST NOT require a daemon.
+- GWZ Core MUST NOT require Git submodules.
+- GWZ Core MUST NOT own credential storage.
+- GWZ Core v0 MUST NOT require a source catalog separate from the workspace
   manifest.
 
 ## Terms
@@ -63,20 +63,20 @@ implementation design.
 - **Operation**: A long-running action such as materialize, pull, push, tag, or
   snapshot.
 - **Message**: A taut-defined request, response, event, or result payload.
-- **Driver**: An external CLI, daemon, UI, or other system using GWS Core.
+- **Driver**: An external CLI, daemon, UI, or other system using GWZ Core.
 
 ## V0 Scope
 
 ### REQ-000: V0 Source Kind
 
-GWS Core v0 MUST implement Git members.
+GWZ Core v0 MUST implement Git members.
 
-GWS Core v0 MUST reject unsupported source kinds during validation unless the
+GWZ Core v0 MUST reject unsupported source kinds during validation unless the
 member is explicitly marked inactive.
 
 ### REQ-001: V0 Required Operations
 
-GWS Core v0 MUST support:
+GWZ Core v0 MUST support:
 
 - workspace creation
 - workspace creation from supplied Git source URLs
@@ -95,7 +95,7 @@ GWS Core v0 MUST support:
 
 ### REQ-002: V0 Deferred Operations
 
-GWS Core v0 MAY defer:
+GWZ Core v0 MAY defer:
 
 - source catalog persistence
 - archive materialization
@@ -114,25 +114,25 @@ errors or hidden from the v0 action surface.
 
 ### REQ-010: Standalone Library
 
-GWS Core MUST be usable as a standalone library with no dependency on any
+GWZ Core MUST be usable as a standalone library with no dependency on any
 specific driver.
 
 ### REQ-011: In-Process Operation
 
 All core operations MUST be callable in-process.
 
-A driver MAY run GWS Core inside a daemon, but daemon use MUST NOT be required.
+A driver MAY run GWZ Core inside a daemon, but daemon use MUST NOT be required.
 
 ### REQ-012: Driver-Owned Policy
 
-GWS Core MUST expose typed policy inputs for behavior that can vary by driver,
+GWZ Core MUST expose typed policy inputs for behavior that can vary by driver,
 workspace, member, or operation.
 
-GWS Core MUST NOT hard-code driver-specific policy.
+GWZ Core MUST NOT hard-code driver-specific policy.
 
 ### REQ-013: Capability Gates Deferred
 
-GWS Core v0 MAY assume local caller authority.
+GWZ Core v0 MAY assume local caller authority.
 
 Remote capability enforcement, user consent, and agent permission checks are
 deferred to drivers or later requirements.
@@ -141,11 +141,11 @@ deferred to drivers or later requirements.
 
 ### REQ-020: Manifest Filename
 
-The v0 manifest filename MUST be `workspace.gws.yaml`.
+The v0 manifest filename MUST be `workspace.gwz.yaml`.
 
 ### REQ-021: Manifest Shape
 
-The v0 manifest MUST use a native GWS schema.
+The v0 manifest MUST use a native GWZ schema.
 
 The manifest MUST keep member identity separate from member materialization
 path.
@@ -166,7 +166,7 @@ The manifest MUST record:
 
 ### REQ-023: Lock Filename
 
-The v0 lock filename MUST be `workspace.gws.lock.yaml`.
+The v0 lock filename MUST be `workspace.gwz.lock.yaml`.
 
 ### REQ-024: Lock Minimum Fields
 
@@ -193,7 +193,7 @@ For Git members, resolved member state MUST include:
 
 ### REQ-025: Internal State Directory
 
-The internal state directory name MUST be `.gws`.
+The internal state directory name MUST be `.gwz`.
 
 ### REQ-026: Snapshot Storage
 
@@ -245,7 +245,7 @@ changes.
 
 ### REQ-032: Member Id Assignment
 
-GWS Core MUST assign a member id when creating a member, adding an existing
+GWZ Core MUST assign a member id when creating a member, adding an existing
 repository, or loading a manifest entry that lacks a member id.
 
 Generated member ids MUST be persisted on the next manifest write.
@@ -254,7 +254,7 @@ Generated member ids MUST be persisted on the next manifest write.
 
 Each member MUST refer to a source id or contain an inline source definition.
 
-GWS Core v0 MAY use the same value for source id and member id when no separate
+GWZ Core v0 MAY use the same value for source id and member id when no separate
 source catalog exists.
 
 ### REQ-034: Source To Member Relationship
@@ -272,14 +272,14 @@ Each source MUST have an explicit source kind.
 
 ### REQ-041: Local-First Source
 
-GWS Core MUST support Git sources that exist locally before they have any remote
+GWZ Core MUST support Git sources that exist locally before they have any remote
 repository.
 
 ### REQ-042: Source Catalog Deferral
 
 A source catalog records known sources independently from any one workspace.
 
-GWS Core v0 MUST NOT require a source catalog.
+GWZ Core v0 MUST NOT require a source catalog.
 
 If a source catalog is added later, the workspace manifest MUST remain the
 authority for workspace membership.
@@ -288,7 +288,7 @@ authority for workspace membership.
 
 Member paths MUST be relative to the workspace root.
 
-GWS Core MUST reject member paths that:
+GWZ Core MUST reject member paths that:
 
 - are absolute
 - escape the workspace root
@@ -297,7 +297,7 @@ GWS Core MUST reject member paths that:
 
 ### REQ-044: Nested Workspace Policy
 
-GWS Core v0 MUST reject nested active GWS workspaces.
+GWZ Core v0 MUST reject nested active GWZ workspaces.
 
 A member MAY contain unrelated repository or package files.
 
@@ -364,7 +364,7 @@ a destructive policy.
 
 ### REQ-064: Policy Values
 
-GWS Core MUST define policy values for:
+GWZ Core MUST define policy values for:
 
 - sync behavior
 - destructive behavior
@@ -376,12 +376,12 @@ GWS Core MUST define policy values for:
 
 ### REQ-070: Local Repository Creation
 
-GWS Core MUST provide an API to create a local Git source without a remote
+GWZ Core MUST provide an API to create a local Git source without a remote
 repository.
 
 ### REQ-071: Add Existing Repository
 
-GWS Core MUST support adding an existing Git repository to a workspace as a
+GWZ Core MUST support adding an existing Git repository to a workspace as a
 member without recloning it.
 
 The add operation MUST record current branch or detached state, current commit,
@@ -389,28 +389,28 @@ configured remotes, and dirty state.
 
 ### REQ-072: Remote Attachment
 
-GWS Core MUST support attaching a remote repository to a local Git source after
+GWZ Core MUST support attaching a remote repository to a local Git source after
 source creation.
 
 ### REQ-073: Multiple Remote Repositories
 
-GWS Core MUST allow a Git source to define multiple named remote repositories.
+GWZ Core MUST allow a Git source to define multiple named remote repositories.
 
 Fetch, push, and pull operations MUST allow caller policy to select the remote
 repository to use.
 
 ### REQ-074: Git Storage Backend
 
-GWS Core v0 MUST materialize Git members as ordinary non-bare working
+GWZ Core v0 MUST materialize Git members as ordinary non-bare working
 repositories.
 
 Public APIs MUST NOT require callers to depend on the Git storage backend.
 
 ### REQ-075: Submodule Policy
 
-GWS Core MUST NOT require Git submodules to represent workspace members.
+GWZ Core MUST NOT require Git submodules to represent workspace members.
 
-GWS Core MAY allow caller policy to configure member-local submodule behavior.
+GWZ Core MAY allow caller policy to configure member-local submodule behavior.
 
 ### REQ-076: Git Status
 
@@ -436,7 +436,7 @@ configuration MUST fail preflight.
 
 ### REQ-080: Operation Taxonomy
 
-GWS Core MUST define one taut action for each supported operation.
+GWZ Core MUST define one taut action for each supported operation.
 
 The v0 action set MUST include:
 
@@ -453,7 +453,7 @@ The v0 action set MUST include:
 
 ### REQ-081: Materialize
 
-GWS Core MUST support materializing a workspace or selection from a manifest and
+GWZ Core MUST support materializing a workspace or selection from a manifest and
 optional lock.
 
 Materialization MUST support these targets:
@@ -466,7 +466,7 @@ Materialization MAY support tag targets.
 
 ### REQ-081A: Initialize From Source URLs
 
-GWS Core MUST support creating a workspace from a supplied ordered list of Git
+GWZ Core MUST support creating a workspace from a supplied ordered list of Git
 source URLs.
 
 Initialization from source URLs MUST:
@@ -511,7 +511,7 @@ destructive policy.
 
 ### REQ-084: Snapshot
 
-GWS Core MUST support snapshotting the current state of a workspace or
+GWZ Core MUST support snapshotting the current state of a workspace or
 selection.
 
 A snapshot MUST record enough resolved member state to later materialize the
@@ -519,7 +519,7 @@ same selected members again.
 
 ### REQ-085: Push
 
-GWS Core MUST support pushing selected push-capable Git members according to
+GWZ Core MUST support pushing selected push-capable Git members according to
 caller policy.
 
 Push responses MUST report per-member success, rejection, skipped, and failed
@@ -527,20 +527,20 @@ states.
 
 ### REQ-086: Tag
 
-GWS Core SHOULD support applying a Git tag to selected tag-capable Git members.
+GWZ Core SHOULD support applying a Git tag to selected tag-capable Git members.
 
 Tag operations MUST fail preflight when selected members are not tag-capable
 unless caller policy explicitly permits skipping unsupported members.
 
-GWS Core tag operations SHOULD create annotated Git tags by default.
+GWZ Core tag operations SHOULD create annotated Git tags by default.
 
 Lightweight Git tags MAY be requested explicitly.
 
 ### REQ-087: Workspace Snapshot Vs Git Tag
 
-A GWS snapshot and a Git tag MUST be distinct concepts.
+A GWZ snapshot and a Git tag MUST be distinct concepts.
 
-Snapshots MUST be stored by GWS Core.
+Snapshots MUST be stored by GWZ Core.
 
 Git tags MUST be stored in Git repositories.
 
@@ -560,14 +560,14 @@ member cannot merge cleanly, unless explicit partial policy is requested.
 
 ### REQ-089A: Compare To Snapshot
 
-GWS Core SHOULD support comparing current workspace or selection state to a
+GWZ Core SHOULD support comparing current workspace or selection state to a
 snapshot.
 
 ## Message Protocol Requirements
 
 ### REQ-090: Taut Authority
 
-GWS Core API messages MUST be defined using taut schemas.
+GWZ Core API messages MUST be defined using taut schemas.
 
 Generated language-specific APIs MAY wrap generated message types, but taut
 schemas MUST remain the protocol authority.
@@ -632,9 +632,9 @@ selected member.
 
 ### REQ-096: Event Ordering
 
-GWS Core MUST preserve event ordering within a single member operation.
+GWZ Core MUST preserve event ordering within a single member operation.
 
-GWS Core MAY interleave events from different members.
+GWZ Core MAY interleave events from different members.
 
 ### REQ-097: Backpressure
 
@@ -644,12 +644,12 @@ Event streams SHOULD support bounded buffering or backpressure.
 
 ### REQ-100: Parallel Member Operations
 
-GWS Core MUST be able to run operations across multiple selected members
+GWZ Core MUST be able to run operations across multiple selected members
 concurrently.
 
 ### REQ-101: Per-Member Serialization
 
-GWS Core MUST serialize mutating operations per member by default.
+GWZ Core MUST serialize mutating operations per member by default.
 
 ### REQ-102: Configurable Concurrency
 
@@ -664,7 +664,7 @@ events without waiting for the full workspace operation to finish.
 
 ### REQ-110: Workspace Status
 
-GWS Core MUST provide workspace status.
+GWZ Core MUST provide workspace status.
 
 ### REQ-111: Member Status
 
@@ -695,7 +695,7 @@ state, or cannot produce reliable incremental deltas.
 
 ### REQ-120: Typed Errors
 
-GWS Core MUST expose typed errors suitable for programmatic handling.
+GWZ Core MUST expose typed errors suitable for programmatic handling.
 
 ### REQ-121: Error Code Registry
 
@@ -706,8 +706,8 @@ operation results.
 
 ### REQ-122: External Tool Errors
 
-If an operation uses an external tool, GWS Core MUST map relevant tool failures
-to typed GWS error codes.
+If an operation uses an external tool, GWZ Core MUST map relevant tool failures
+to typed GWZ error codes.
 
 ### REQ-123: Recoverable Errors
 

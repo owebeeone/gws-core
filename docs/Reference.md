@@ -1,7 +1,7 @@
-# gws-core Reference
+# gwz-core Reference
 
-This page is the practical reference for embedding `gws-core`. For command-line
-workflows, use `gws-cli`; it is the canonical user-facing driver for this
+This page is the practical reference for embedding `gwz-core`. For command-line
+workflows, use `gwz-cli`; it is the canonical user-facing driver for this
 library.
 
 ## Request Model
@@ -12,16 +12,16 @@ Every operation is a generated taut request struct. Each request carries
 ```rust
 use std::path::Path;
 
-use gws_core::git::Git2Backend;
-use gws_core::workspace_ops::handle_create_repo;
-use gws_core::{CreateRepoRequest, RequestMeta, WorkspaceRef};
+use gwz_core::git::Git2Backend;
+use gwz_core::workspace_ops::handle_create_repo;
+use gwz_core::{CreateRepoRequest, RequestMeta, WorkspaceRef};
 
-fn create_member_repo() -> gws_core::model::ModelResult<()> {
+fn create_member_repo() -> gwz_core::model::ModelResult<()> {
     let backend = Git2Backend::new();
     let request = CreateRepoRequest {
         meta: RequestMeta {
             request_id: "req-1".to_owned(),
-            schema_version: "gws.protocol/v0".to_owned(),
+            schema_version: "gwz.protocol/v0".to_owned(),
             workspace: Some(WorkspaceRef {
                 root: Some("/work/my-ws".to_owned()),
                 ..WorkspaceRef::default()
@@ -34,7 +34,7 @@ fn create_member_repo() -> gws_core::model::ModelResult<()> {
 
     let response = handle_create_repo(&backend, Path::new("/work/my-ws"), request, "op-1")?;
     match response.response.meta.aggregate_status {
-        gws_core::AggregateStatus::Ok => {
+        gwz_core::AggregateStatus::Ok => {
             for member in response.response.members {
                 eprintln!("created {} at {}", member.member_id, member.member_path);
             }
@@ -84,7 +84,7 @@ functions are the simpler entrypoints for direct embedding and tests.
 | `MaterializeRequest` | `workspace_ops::handle_materialize` | Move selected members to an explicit lock, snapshot, tag, or commit target. |
 | `StatusRequest` | `status::handle_status` | Report selected member Git state, lock match state, and optional combined status projections. |
 | `SnapshotRequest` | `workspace_ops::handle_snapshot` | Write a named snapshot of the current selected member states. |
-| `TagRequest` | `workspace_ops::handle_tag` | Write a named GWS tag for the selected member states. |
+| `TagRequest` | `workspace_ops::handle_tag` | Write a named GWZ tag for the selected member states. |
 | `PullHeadRequest` | `workspace_ops::handle_pull_head` | Fetch and fast-forward selected members to their configured upstream heads. |
 | `PullSnapshotRequest` | `workspace_ops::handle_pull_snapshot` | Materialize selected members to a named snapshot. |
 | `PushRequest` | `workspace_ops::handle_push` | Push selected members to a remote/refspec, using request policy where supported. |
@@ -112,8 +112,8 @@ which author/committer identity should be used for Git objects.
 
 ## Direct vs CLI Use
 
-Use `gws-core` directly when embedding workspace behavior in an agent, UI, test
+Use `gwz-core` directly when embedding workspace behavior in an agent, UI, test
 harness, or another local service.
 
-Use `gws-cli` when you want command behavior, argument parsing, terminal/JSON
+Use `gwz-cli` when you want command behavior, argument parsing, terminal/JSON
 rendering, and the user workflow for init, status, snapshot, tag, pull, and push.

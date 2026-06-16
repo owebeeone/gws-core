@@ -1,10 +1,10 @@
-# GWS Core Design
+# GWZ Core Design
 
 Status: accepted
 
-This document describes how GWS Core satisfies the accepted v0 direction.
+This document describes how GWZ Core satisfies the accepted v0 direction.
 
-`GWSRequirements.md` is the baseline for required behavior. This accepted design
+`GWZRequirements.md` is the baseline for required behavior. This accepted design
 is authoritative for implementation choices where later decisions refined or
 superseded earlier requirement text.
 
@@ -12,9 +12,9 @@ superseded earlier requirement text.
 
 - Keep the core as a library with no required daemon.
 - Keep all public API traffic message-oriented and taut-defined.
-- Treat the `gws` CLI as a thin driver over the same messages used by every
+- Treat the `gwz` CLI as a thin driver over the same messages used by every
   other driver.
-- Use a native GWS manifest and lock format.
+- Use a native GWZ manifest and lock format.
 - Preserve explicit attribution seams so non-CLI drivers can attach an actor and
   Git object identity to operations instead of inheriting ambient process state.
 - Treat selection-wide mutation as atomic-by-default through preflight and
@@ -27,7 +27,7 @@ superseded earlier requirement text.
 ## Module Layout
 
 ```text
-gws-core
+gwz-core
   model
     workspace
     member
@@ -45,7 +45,7 @@ gws-core
     atomic_write
     schema_version
   protocol
-    gws.taut.py
+    gwz.taut.py
     generated message types
     dispatcher
   operations
@@ -73,7 +73,7 @@ gws-core
     golden artifact fixtures
     protocol corpus
 
-gws
+gwz
   cli parser
   request builder
   response/event renderer
@@ -83,7 +83,7 @@ The module names are descriptive, not a required crate/module tree.
 
 ## Architectural Shape
 
-GWS Core should use a ports-and-adapters shape:
+GWZ Core should use a ports-and-adapters shape:
 
 ```text
 driver
@@ -200,23 +200,23 @@ One workspace root contains:
 
 ```text
 workspace/
-  gws.yml
-  gws.lock.yml
+  gwz.yml
+  gwz.lock.yml
   tags/
     <tag-name>.yml
-.gws/
+.gwz/
   snapshots/
     <snapshot-id>.yaml
 ```
 
-`workspace/` contains versioned workspace artifacts. `.gws/` is internal runtime
+`workspace/` contains versioned workspace artifacts. `.gwz/` is internal runtime
 state.
 
 Decision: v0 uses the directory layout above. Older draft/requirements text that
-named flat files such as `workspace.gws.yaml` and `workspace.gws.lock.yaml` is
+named flat files such as `workspace.gwz.yaml` and `workspace.gwz.lock.yaml` is
 superseded by this accepted design.
 
-Persistent operation event logs under `.gws/operations/` are deferred. V0 keeps
+Persistent operation event logs under `.gwz/operations/` are deferred. V0 keeps
 operation events in memory and lets drivers render or persist event streams.
 
 ## Workspace Discovery
@@ -225,31 +225,31 @@ Commands that operate on an existing workspace should discover the workspace
 root by walking upward from the current directory until they find:
 
 ```text
-workspace/gws.yml
+workspace/gwz.yml
 ```
 
 The first match wins.
 
-This means running `gws` from inside a materialized subrepo still acts on the
-containing GWS workspace, not on the subrepo as an independent workspace.
+This means running `gwz` from inside a materialized subrepo still acts on the
+containing GWZ workspace, not on the subrepo as an independent workspace.
 
 If no workspace is found, commands that require an existing workspace fail with
 `workspace_not_found`.
 
-`gws init` is different: it targets the current directory unless a driver or CLI
+`gwz init` is different: it targets the current directory unless a driver or CLI
 explicitly supplies another root.
 
 To avoid discovery shadowing, v0 treats an active member root containing its own
-`workspace/gws.yml` as a nested active GWS workspace and rejects it during member
-validation. A fresh workspace checkout that has `workspace/gws.yml` but no `.gws/`
-is still a valid root; commands may create `.gws/` as needed.
+`workspace/gwz.yml` as a nested active GWZ workspace and rejects it during member
+validation. A fresh workspace checkout that has `workspace/gwz.yml` but no `.gwz/`
+is still a valid root; commands may create `.gwz/` as needed.
 
 ## Manifest Shape
 
-The manifest is YAML and uses a native GWS layout:
+The manifest is YAML and uses a native GWZ layout:
 
 ```yaml
-schema: gws.workspace/v0
+schema: gwz.workspace/v0
 workspace:
   id: ws_01JZ...
 
@@ -276,7 +276,7 @@ Design rules:
 - `remotes` is a deterministic list of remote specs, not a YAML map. Readers
   must reject duplicate remote names.
 - `desired.git_tag`, when present, means a Git tag/ref in the member
-  repository. GWS workspace tags are separate artifacts under `workspace/tags/`
+  repository. GWZ workspace tags are separate artifacts under `workspace/tags/`
   and are never stored as member desired refs.
 
 ## Path Validation
@@ -289,9 +289,9 @@ Path validation must reject:
 - paths that escape the workspace root
 - paths that collide with another member path
 - paths under `workspace/`
-- paths under `.gws/`
+- paths under `.gwz/`
 
-`workspace/` is reserved for versioned GWS metadata. `.gws/` is reserved for
+`workspace/` is reserved for versioned GWZ metadata. `.gwz/` is reserved for
 internal runtime state.
 
 ## Lock Shape
@@ -299,9 +299,9 @@ internal runtime state.
 The lock records resolved state, not desired state:
 
 ```yaml
-schema: gws.lock/v0
+schema: gwz.lock/v0
 workspace_id: ws_01JZ...
-manifest_schema: gws.workspace/v0
+manifest_schema: gwz.workspace/v0
 created_at: "2026-06-15T00:00:00Z"
 members:
   mem_01JZ...:
@@ -325,23 +325,23 @@ Default v0 artifact writes:
 
 ```text
 create workspace
-  writes workspace/gws.yml and creates .gws/
-  does not write workspace/gws.lock.yml unless explicitly requested
+  writes workspace/gwz.yml and creates .gwz/
+  does not write workspace/gwz.lock.yml unless explicitly requested
 
 init from sources
-  writes workspace/gws.yml
-  writes workspace/gws.lock.yml after successful materialization
+  writes workspace/gwz.yml
+  writes workspace/gwz.lock.yml after successful materialization
 
 add existing repository
-  writes workspace/gws.yml
-  writes workspace/gws.lock.yml with the added member's current resolved state
+  writes workspace/gwz.yml
+  writes workspace/gwz.lock.yml with the added member's current resolved state
 
 create repository
-  writes workspace/gws.yml
-  writes workspace/gws.lock.yml with the new local-only member state
+  writes workspace/gwz.yml
+  writes workspace/gwz.lock.yml with the new local-only member state
 
 materialize to lock
-  reads workspace/gws.lock.yml
+  reads workspace/gwz.lock.yml
   does not rewrite the lock by default
 
 materialize to head
@@ -349,10 +349,10 @@ materialize to snapshot
 materialize to tag
 pull to head
 pull to snapshot
-  writes workspace/gws.lock.yml after successful materialization/update
+  writes workspace/gwz.lock.yml after successful materialization/update
 
 snapshot
-  writes .gws/snapshots/<snapshot-id>.yaml
+  writes .gwz/snapshots/<snapshot-id>.yaml
   does not rewrite the lock
 
 tag
@@ -361,7 +361,7 @@ tag
 
 status
 push
-  do not write GWS artifacts by default
+  do not write GWZ artifacts by default
 ```
 
 If an operation is rejected during preflight, no artifact writes occur. If an
@@ -375,7 +375,7 @@ Snapshots use the same resolved member-state shape as the lock, plus a snapshot
 identity and selection:
 
 ```yaml
-schema: gws.snapshot/v0
+schema: gwz.snapshot/v0
 workspace_id: ws_01JZ...
 snapshot_id: snap_demo
 created_at: "2026-06-15T00:00:00Z"
@@ -390,17 +390,17 @@ members:
     commit: abc123...
 ```
 
-Snapshots are GWS-owned records. They are not Git tags.
+Snapshots are GWZ-owned records. They are not Git tags.
 
-## GWS Tag Shape
+## GWZ Tag Shape
 
-GWS tags are workspace-scoped, versioned GWS artifacts.
+GWZ tags are workspace-scoped, versioned GWZ artifacts.
 
-They are not Git tags. A GWS tag records the resolved member refs for one
+They are not Git tags. A GWZ tag records the resolved member refs for one
 workspace tag name without writing `refs/tags/*` inside member repositories.
 
 ```yaml
-schema: gws.tag/v0
+schema: gwz.tag/v0
 workspace_id: ws_01JZ...
 tag: demo
 created_at: "2026-06-15T00:00:00Z"
@@ -418,10 +418,10 @@ members:
 The same tag name may exist in different workspaces without colliding, even if
 those workspaces share one or more member repositories.
 
-GWS tag files are intended to be versioned with the workspace metadata.
+GWZ tag files are intended to be versioned with the workspace metadata.
 
 Git tags are optional per-repository publication artifacts and should be handled
-by an explicit export or publish operation, not by default GWS tag creation.
+by an explicit export or publish operation, not by default GWZ tag creation.
 
 ## Identity
 
@@ -495,7 +495,7 @@ request
   -> return final aggregate + per-member result
 ```
 
-Atomic-by-default means GWS Core does not begin mutation if preflight fails.
+Atomic-by-default means GWZ Core does not begin mutation if preflight fails.
 It does not guarantee transactional rollback for unexpected host or Git failures
 after mutation begins. Unexpected mid-operation failures are reported as
 per-member failures and aggregate partial-failure status.
@@ -546,7 +546,7 @@ should reject `driver_selected` with `unsupported_operation`.
 
 ## Attribution And Git Identity
 
-GWS operations must not rely on ambient process identity as the only way to
+GWZ operations must not rely on ambient process identity as the only way to
 record who caused an operation. Non-CLI drivers need to carry an actor from the
 request message.
 
@@ -554,7 +554,7 @@ The model separates three identities:
 
 ```text
 operation actor
-  who or what requested the GWS operation
+  who or what requested the GWZ operation
 
 Git object identity
   author/committer/tagger identity written into Git objects when an operation
@@ -569,7 +569,7 @@ API clients should populate these fields as follows:
 ```text
 OperationActor
   Put the authenticated requester or responsible principal here. This is the
-  GWS audit identity: "who caused this GWS operation?"
+  GWZ audit identity: "who caused this GWZ operation?"
 
 GitObjectIdentity.git_author
   Put the person or agent that should be recorded as the author of newly
@@ -618,21 +618,21 @@ operations should either use driver policy to derive Git identity or fail with
 `attribution_denied`. They should not silently fall back to ambient process Git
 config unless the driver explicitly allows that fallback.
 
-GWS Core can control Git object identity for operations that create Git objects
+GWZ Core can control Git object identity for operations that create Git objects
 by passing explicit signatures to the Git backend. Future commit, merge, rebase,
 and annotated Git-tag operations should use request-provided Git identity when
 present, subject to driver policy.
 
-GWS Core can record the operation actor in operation events, operation results,
-and GWS-owned artifacts. That actor is GWS attribution, not proof by itself. A
+GWZ Core can record the operation actor in operation events, operation results,
+and GWZ-owned artifacts. That actor is GWZ attribution, not proof by itself. A
 driver that accepts requests from users or agents is responsible for
 authenticating the actor and deciding whether the requested Git identity is
 allowed.
 
-GWS Core cannot make a remote forge attribute a push to an arbitrary actor. Push
+GWZ Core cannot make a remote forge attribute a push to an arbitrary actor. Push
 attribution on services such as GitHub, GitLab, Gitea, or Forgejo follows the
 credential used by the remote operation. The protocol may carry an opaque
-`credential_ref`, but credential resolution and authorization stay outside GWS
+`credential_ref`, but credential resolution and authorization stay outside GWZ
 Core.
 
 The CLI may omit attribution or derive it from local Git config for human
@@ -641,7 +641,7 @@ principal instead of from the OS user running the process.
 
 ## Message Protocol
 
-The taut schema should be authored as `gws.taut.py`. The field inventory below
+The taut schema should be authored as `gwz.taut.py`. The field inventory below
 is the design contract; exact syntax may adjust to the taut compiler.
 
 Timestamps are `INT` milliseconds since the Unix epoch UTC. Paths are strings.
@@ -757,7 +757,7 @@ SCHEMA = schema(
          warn=2,
          error=3),
 
-    Enum("GwsErrorCode",
+    Enum("GwzErrorCode",
          ok=0,
          invalid_request=1,
          workspace_not_found=2,
@@ -843,8 +843,8 @@ SCHEMA = schema(
         F("message", 6, STR, optional=True),
         F("attribution", 7, Ref("OperationAttribution"), optional=True)),
 
-    Msg("GwsError",
-        F("code", 1, Ref("GwsErrorCode")),
+    Msg("GwzError",
+        F("code", 1, Ref("GwzErrorCode")),
         F("message", 2, STR),
         F("member_id", 3, STR, optional=True),
         F("member_path", 4, STR, optional=True),
@@ -920,7 +920,7 @@ SCHEMA = schema(
         F("member_path", 2, STR),
         F("source_kind", 3, Ref("SourceKind")),
         F("status", 4, Ref("MemberStatus")),
-        F("error", 5, Ref("GwsError"), optional=True),
+        F("error", 5, Ref("GwzError"), optional=True),
         F("planned", 6, Ref("PlannedChange"), optional=True),
         F("state", 7, Ref("ResolvedMemberState"), optional=True),
         F("git_status", 8, Ref("GitStatus"), optional=True),
@@ -929,7 +929,7 @@ SCHEMA = schema(
     Msg("ResponseEnvelope",
         F("meta", 1, Ref("ResponseMeta")),
         F("members", 2, List(Ref("MemberResponse"))),
-        F("errors", 3, List(Ref("GwsError")))),
+        F("errors", 3, List(Ref("GwzError")))),
 
     Msg("OperationEvent",
         F("operation_id", 1, STR),
@@ -942,7 +942,7 @@ SCHEMA = schema(
         F("member_path", 8, STR, optional=True),
         F("message", 9, STR, optional=True),
         F("member", 10, Ref("MemberResponse"), optional=True),
-        F("error", 11, Ref("GwsError"), optional=True),
+        F("error", 11, Ref("GwzError"), optional=True),
         F("attribution", 12, Ref("OperationAttribution"), optional=True)),
 
     Msg("OperationResult",
@@ -953,7 +953,7 @@ SCHEMA = schema(
         F("started_at_ms", 5, INT),
         F("finished_at_ms", 6, INT),
         F("members", 7, List(Ref("MemberResponse"))),
-        F("errors", 8, List(Ref("GwsError"))),
+        F("errors", 8, List(Ref("GwzError"))),
         F("attribution", 9, Ref("OperationAttribution"), optional=True)),
 
     # ---- action requests --------------------------------------------------
@@ -1023,7 +1023,7 @@ SCHEMA = schema(
     Msg("PullSnapshotResponse", F("response", 1, Ref("ResponseEnvelope"))),
     Msg("PushResponse", F("response", 1, Ref("ResponseEnvelope"))),
 
-    service("GwsCore",
+    service("GwzCore",
         method("create_workspace", role="in",
                params=[("request", Ref("CreateWorkspaceRequest"))],
                out=Ref("CreateWorkspaceResponse")),
@@ -1068,7 +1068,7 @@ SCHEMA = schema(
 
 The first implementation should generate Rust types from this schema and keep a
 small hand-written mapping layer between generated protocol types and internal
-model types. That mapping layer is where validation errors become `GwsError`
+model types. That mapping layer is where validation errors become `GwzError`
 values.
 
 ## Operation Runtime
@@ -1118,7 +1118,7 @@ action kind/service method, and invokes the matching operation spec.
 
 ## CLI Driver Design
 
-The `gws` CLI is the first driver, not a separate architecture.
+The `gwz` CLI is the first driver, not a separate architecture.
 
 CLI flow:
 
@@ -1127,7 +1127,7 @@ argv
   -> parse command
   -> discover workspace root when command requires one
   -> build taut request
-  -> submit request to in-process GWS Core
+  -> submit request to in-process GWZ Core
   -> render immediate response
   -> if accepted: render events until OperationResult
 ```
@@ -1139,40 +1139,40 @@ future daemon, UI, or test harness.
 Suggested v0 command mapping:
 
 ```text
-gws init
+gwz init
   -> CreateWorkspaceRequest
 
-gws init <url>...
+gwz init <url>...
   -> InitFromSourcesRequest
 
-gws add <repo-path>
+gwz add <repo-path>
   -> AddExistingRepoRequest
 
-gws repo create <member-path>
+gwz repo create <member-path>
   -> CreateRepoRequest
 
-gws materialize --lock
-gws materialize --head
-gws materialize --snapshot <name>
-gws materialize --tag <name>
+gwz materialize --lock
+gwz materialize --head
+gwz materialize --snapshot <name>
+gwz materialize --tag <name>
   -> MaterializeRequest
 
-gws pull --head
+gwz pull --head
   -> PullHeadRequest
 
-gws pull --snapshot <name>
+gwz pull --snapshot <name>
   -> PullSnapshotRequest
 
-gws snapshot <name>
+gwz snapshot <name>
   -> SnapshotRequest
 
-gws tag <name>
+gwz tag <name>
   -> TagRequest
 
-gws push [--remote <name>] [--refspec <refspec>]
+gwz push [--remote <name>] [--refspec <refspec>]
   -> PushRequest
 
-gws status
+gwz status
   -> StatusRequest
 ```
 
@@ -1193,12 +1193,12 @@ Global CLI options should map to common message fields:
 --jsonl             render response, events, and result as JSON lines
 ```
 
-For `gws init`, positional arguments are source URLs. No `--repo` flag is
-needed. `gws init` with no positional arguments creates an empty workspace in
+For `gwz init`, positional arguments are source URLs. No `--repo` flag is
+needed. `gwz init` with no positional arguments creates an empty workspace in
 the current directory.
 
 Commands that require an existing workspace use upward discovery from the
-current directory unless `--root` is supplied. `gws init` does not do upward
+current directory unless `--root` is supplied. `gwz init` does not do upward
 discovery for its target; it targets the current directory or `--root`.
 
 CLI rendering should be replaceable:
@@ -1228,28 +1228,28 @@ Inputs:
 
 Preflight:
 
-- if `workspace/gws.yml` already exists at the target root, reject as
+- if `workspace/gwz.yml` already exists at the target root, reject as
   `workspace_already_exists`
-- if an ancestor contains `workspace/gws.yml`, reject as
+- if an ancestor contains `workspace/gwz.yml`, reject as
   `nested_workspace`
-- if the target root contains ordinary files but no GWS workspace, allow
+- if the target root contains ordinary files but no GWZ workspace, allow
   initialization
 
 Effects:
 
-- create `workspace/gws.yml`
-- create `.gws/`
-- optionally create `workspace/gws.lock.yml`
+- create `workspace/gwz.yml`
+- create `.gwz/`
+- optionally create `workspace/gwz.lock.yml`
 
 ### Initialize From Sources
 
 CLI shape:
 
 ```text
-gws init git@github.com:org/repo-a.git git@github.com:org/repo-b.git
+gwz init git@github.com:org/repo-a.git git@github.com:org/repo-b.git
 ```
 
-For `gws init`, positional arguments are source URLs.
+For `gwz init`, positional arguments are source URLs.
 
 Inputs:
 
@@ -1271,7 +1271,7 @@ Flow:
 - create workspace artifacts
 - create one member per URL
 - materialize all members to the target
-- write `workspace/gws.lock.yml`
+- write `workspace/gwz.lock.yml`
 - return aggregate result and per-member results
 
 Default path derivation uses `repos/<repo-name>`, where `<repo-name>` is the
@@ -1390,7 +1390,7 @@ Flow:
 - write `workspace/tags/<tag-name>.yml` atomically
 - return aggregate result and per-member results
 
-GWS tag creation does not create Git tags in member repositories.
+GWZ tag creation does not create Git tags in member repositories.
 
 ### Push
 
@@ -1402,7 +1402,7 @@ Default policy:
 
 ## Error Model
 
-Errors are exposed as typed taut enum values through `GwsErrorCode`.
+Errors are exposed as typed taut enum values through `GwzErrorCode`.
 
 The protocol enum is the registry for error-code names and integer values. Error
 values must be stable once published. New errors may be appended, but existing

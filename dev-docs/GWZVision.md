@@ -1,6 +1,6 @@
-# GWS Vision
+# GWZ Vision
 
-GWS is the local-first source and workspace substrate for Glial, Grazel,
+GWZ is the local-first source and workspace substrate for Glial, Grazel,
 Gryth, and Glade.
 
 It exists because the system needs both of these capabilities:
@@ -12,7 +12,7 @@ It exists because the system needs both of these capabilities:
    from many independently governed sources without using Git submodules or
    forcing everything into a monorepo.
 
-GWS is therefore not just a submodule replacement. It is a local-first source
+GWZ is therefore not just a submodule replacement. It is a local-first source
 catalog plus a materialized workspace manager.
 
 ## Core Thesis
@@ -21,7 +21,7 @@ The source of truth for a working application is not one repository. It is a
 live workspace assembled from many source authorities, build outputs, and
 runtime-delivered modules.
 
-GWS SHOULD make that workspace explicit, observable, reproducible, and
+GWZ SHOULD make that workspace explicit, observable, reproducible, and
 AI-readable.
 
 The long-term loop is:
@@ -29,7 +29,7 @@ The long-term loop is:
 ```text
 agent creates or selects source
 agent writes code
-GWS observes source and file state
+GWZ observes source and file state
 Grazel builds and packages it
 Glade installs it into the live application fabric
 Gryth projects the source/build/app state to the user
@@ -50,14 +50,14 @@ and release habits. For edge innovation, it is often better to create a new repo
 immediately, move fast, and fix packaging or publication once the idea proves
 worth sharing.
 
-GWS MUST allow new code to start outside any central repository structure.
+GWZ MUST allow new code to start outside any central repository structure.
 
 ## Why Not Submodules
 
 Git submodules encode federation in Git internals. They are sharp for branch
 work, local edits, nested status, onboarding, and agent workflows.
 
-GWS MUST NOT rely on submodules as its workspace model.
+GWZ MUST NOT rely on submodules as its workspace model.
 
 ## Why Not Registry-Only
 
@@ -66,12 +66,12 @@ not enough for early development. Agents and humans need to co-edit raw source,
 change producers and consumers together, and install intermediate builds into a
 live app before publishing a versioned package.
 
-GWS SHOULD support registry and archive artifacts, but it MUST treat raw source
+GWZ SHOULD support registry and archive artifacts, but it MUST treat raw source
 materialization as a first-class workflow.
 
 ## Two Planes
 
-GWS has two separate planes.
+GWZ has two separate planes.
 
 ### Source Authority Plane
 
@@ -196,15 +196,15 @@ Live state MUST be streamable to Grazel, Gryth, Glade, and AI agents.
 The target agent workflow is:
 
 ```text
-gws source create gryth-weather-panel --kind git
-gws workspace add gryth-weather-panel --path repos/gryth-weather-panel
+gwz source create gryth-weather-panel --kind git
+gwz workspace add gryth-weather-panel --path repos/gryth-weather-panel
 agent writes code
-gws status/watch emits changes
+gwz status/watch emits changes
 grazel builds the module
 glade installs the module into a live Gryth application
 agent observes behavior through the app layer
 agent iterates
-gws publish gryth-weather-panel --to github:org/gryth-weather-panel
+gwz publish gryth-weather-panel --to github:org/gryth-weather-panel
 ```
 
 The local create path MUST succeed without a remote.
@@ -217,24 +217,24 @@ The CLI is not the architecture, but the first CLI SHOULD make the model
 obvious:
 
 ```text
-gws source create NAME
-gws source fork SOURCE
-gws source publish SOURCE --to PROVIDER
-gws init git@github.com:org/repo-a.git git@github.com:org/repo-b.git
-gws workspace add SOURCE --path PATH
-gws sync
-gws status
-gws watch --jsonl
-gws pin
+gwz source create NAME
+gwz source fork SOURCE
+gwz source publish SOURCE --to PROVIDER
+gwz init git@github.com:org/repo-a.git git@github.com:org/repo-b.git
+gwz workspace add SOURCE --path PATH
+gwz sync
+gwz status
+gwz watch --jsonl
+gwz pin
 ```
 
 ## Relationship To Grazel
 
-GWS owns workspace source and live state.
+GWZ owns workspace source and live state.
 
 Grazel owns build analysis, execution, and package production.
 
-Grazel MAY consume GWS as a library for:
+Grazel MAY consume GWZ as a library for:
 
 - workspace discovery
 - file invalidation
@@ -242,11 +242,11 @@ Grazel MAY consume GWS as a library for:
 - build adapter selection
 - daemon/workarea status projection
 
-GWS MUST NOT become the build system.
+GWZ MUST NOT become the build system.
 
 ## Relationship To Gryth
 
-Gryth consumes GWS state as a UI projection.
+Gryth consumes GWZ state as a UI projection.
 
 The Gryth workspace UI SHOULD show:
 
@@ -259,19 +259,19 @@ The Gryth workspace UI SHOULD show:
 - errors and required actions
 
 Gryth SHOULD NOT need to shell out to Git or inspect random filesystem paths
-directly when GWS can provide the same facts.
+directly when GWZ can provide the same facts.
 
 ## Relationship To Glade
 
 Glade distributes state and app/module installation records.
 
-GWS SHOULD provide canonical workspace facts that can be carried over Glade.
+GWZ SHOULD provide canonical workspace facts that can be carried over Glade.
 Glade SHOULD carry the provenance of live application code back to the source
 member, commit, build artifact, and installing principal.
 
 ## Security Posture
 
-GWS v0 may be local and permissive, but the model MUST preserve security seams.
+GWZ v0 may be local and permissive, but the model MUST preserve security seams.
 
 The following actions SHOULD be capability-gated when exposed to agents or
 remote participants:
@@ -289,7 +289,7 @@ Remote publication MUST be separate from local source creation.
 
 ## Non-Goals
 
-GWS is not:
+GWZ is not:
 
 - a hosted GitHub replacement
 - a package registry
@@ -297,7 +297,7 @@ GWS is not:
 - a code review system
 - a general application deployment system
 
-GWS MAY integrate with Forgejo, Gitea, GitHub, package registries, and archive
+GWZ MAY integrate with Forgejo, Gitea, GitHub, package registries, and archive
 stores, but those integrations are adapters.
 
 ## Initial Implementation Direction
@@ -317,7 +317,7 @@ grazel-workspace-core
   archive adapter
 
 grazel-workspace
-  gws CLI
+  gwz CLI
 ```
 
 The first implementation SHOULD be read-mostly and snapshot-first:
@@ -334,13 +334,13 @@ It SHOULD avoid remote forge automation until the local model is stable.
 
 ## Requirements Baseline
 
-`GWSRequirements.md` is the authority for the completed v0 requirements.
+`GWZRequirements.md` is the authority for the completed v0 requirements.
 
 The settled v0 baseline is:
 
-- `workspace.gws.yaml` is the manifest filename.
-- `workspace.gws.lock.yaml` is the lock filename.
-- `.gws/` is the internal state directory.
+- `workspace.gwz.yaml` is the manifest filename.
+- `workspace.gwz.lock.yaml` is the lock filename.
+- `.gwz/` is the internal state directory.
 - Git is the required v0 source kind.
 - Ordinary non-bare Git repositories are the v0 storage backend.
 - A Rust-native Git backend using gitoxide/gix is preferred.

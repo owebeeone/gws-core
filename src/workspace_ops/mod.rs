@@ -2510,7 +2510,7 @@ mod tests {
         let backend = Git2Backend::new();
         handle_create_workspace(create_workspace_request(temp.path()), "op_create").unwrap();
         let remote = temp.path().join("remote.git");
-        git2::Repository::init_bare(&remote).unwrap();
+        init_bare_main(&remote);
         let repo_path = temp.path().join("repos/app");
         backend.create_repo(&repo_path).unwrap();
         backend
@@ -2542,7 +2542,7 @@ mod tests {
         let backend = Git2Backend::new();
         handle_create_workspace(create_workspace_request(temp.path()), "op_create").unwrap();
         let remote = temp.path().join("publish.git");
-        git2::Repository::init_bare(&remote).unwrap();
+        init_bare_main(&remote);
         let repo_path = temp.path().join("repos/app");
         backend.create_repo(&repo_path).unwrap();
         backend
@@ -3019,6 +3019,11 @@ mod tests {
         }
     }
 
+    fn init_bare_main(path: &Path) {
+        let repo = git2::Repository::init_bare(path).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
+    }
+
     struct RemoteFixture {
         _temp: TempDir,
         source: PathBuf,
@@ -3031,7 +3036,7 @@ mod tests {
             let source = temp.path().join("source");
             let remote = temp.path().join("remote.git");
             Git2Backend::new().create_repo(&source).unwrap();
-            git2::Repository::init_bare(&remote).unwrap();
+            init_bare_main(&remote);
             Git2Backend::new()
                 .add_remote(&source, "origin", remote.to_str().unwrap())
                 .unwrap();

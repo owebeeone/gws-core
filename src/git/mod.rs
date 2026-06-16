@@ -640,7 +640,7 @@ mod tests {
         let bare_path = temp.path().join("remote.git");
         let clone_path = temp.path().join("clone");
         backend.create_repo(&source_path).unwrap();
-        git2::Repository::init_bare(&bare_path).unwrap();
+        init_bare_main(&bare_path);
         backend
             .add_remote(&source_path, "origin", bare_path.to_str().unwrap())
             .unwrap();
@@ -733,6 +733,11 @@ mod tests {
         let mut index = repo.index()?;
         index.add_path(Path::new(relative_path))?;
         index.write()
+    }
+
+    fn init_bare_main(path: &Path) {
+        let repo = git2::Repository::init_bare(path).unwrap();
+        repo.set_head("refs/heads/main").unwrap();
     }
 
     struct TempDir {

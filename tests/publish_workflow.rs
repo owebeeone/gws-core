@@ -14,6 +14,13 @@ fn publish_workflow_runs_full_rust_verification() {
 }
 
 #[test]
+fn publish_workflow_installs_release_taut_proto_for_protocol_tests() {
+    assert!(PUBLISH_WORKFLOW.contains("actions/setup-python"));
+    assert!(PUBLISH_WORKFLOW.contains("TAUT_PYTHON: python"));
+    assert!(PUBLISH_WORKFLOW.contains("python -m pip install --upgrade pip taut-proto"));
+}
+
+#[test]
 fn publish_workflow_allows_manual_and_tagged_runs() {
     assert!(PUBLISH_WORKFLOW.contains("workflow_dispatch"));
     assert!(PUBLISH_WORKFLOW.contains("tags:"));

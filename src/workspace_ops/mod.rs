@@ -1759,8 +1759,8 @@ fn path_slug(path: &str) -> ModelResult<String> {
 }
 
 fn repo_name_from_url(url: &str) -> String {
-    let trimmed = url.trim_end_matches('/');
-    let tail = trimmed.rsplit(['/', ':']).next().unwrap_or(trimmed);
+    let trimmed = url.trim_end_matches(['/', '\\']);
+    let tail = trimmed.rsplit(['/', '\\', ':']).next().unwrap_or(trimmed);
     tail.strip_suffix(".git").unwrap_or(tail).to_owned()
 }
 
@@ -2007,6 +2007,32 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(collision.code, ErrorCode::PathCollision);
+    }
+
+    #[test]
+    fn init_from_sources_derives_default_paths_from_windows_local_paths() {
+        let manifest = crate::artifact::ManifestArtifact {
+            schema: crate::artifact::WORKSPACE_SCHEMA.to_owned(),
+            workspace: crate::artifact::WorkspaceHeader {
+                id: "ws_ops".to_owned(),
+            },
+            members: Vec::new(),
+        };
+
+        let plans = init_source_plans(
+            &manifest,
+            &[crate::SourceUrl {
+                url: r"C:\Users\runneradmin\AppData\Local\Temp\remote.git".to_owned(),
+                path: None,
+                remote_name: None,
+                branch: None,
+            }],
+        )
+        .unwrap();
+
+        assert_eq!(plans[0].path.as_str(), "repos/remote");
+        assert_eq!(plans[0].member_id, "mem_remote");
+        assert_eq!(plans[0].source_id, "src_remote");
     }
 
     #[test]

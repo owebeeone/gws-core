@@ -252,6 +252,13 @@ fn protocol_schema_uses_keyword_message_dsl() {
     );
 }
 
+#[test]
+fn taut_command_can_use_configured_python_executable() {
+    let command = taut_command_for_python(Path::new("/tmp/gwz-core"), "python");
+
+    assert_eq!(command.get_program().to_string_lossy(), "python");
+}
+
 fn attribution() -> OperationAttribution {
     OperationAttribution {
         actor: Some(OperationActor {
@@ -287,7 +294,12 @@ fn member_error() -> GwzError {
 }
 
 fn taut_command(root: &Path) -> Command {
-    let mut command = Command::new("python3");
+    let python = std::env::var("TAUT_PYTHON").unwrap_or_else(|_| "python3".to_owned());
+    taut_command_for_python(root, &python)
+}
+
+fn taut_command_for_python(root: &Path, python: &str) -> Command {
+    let mut command = Command::new(python);
     let taut_src = root
         .parent()
         .expect("gwz-core should have a parent")

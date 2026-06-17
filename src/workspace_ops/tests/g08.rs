@@ -177,6 +177,42 @@ use super::*;
         );
     }
 
+    #[test]
+    pub(crate) fn push_rejects_whole_batch_when_a_member_fails_preflight() {
+        // F7/Q2: preflight all members before pushing any. A valid pushable member
+        // (app) alongside an unmaterialized member (lib) must reject the whole push
+        // WITHOUT advancing the valid member's remote.
+        let temp = TempDir::new("push-reject-batch");
+        let backend = Git2Backend::new();
+        handle_create_workspace(create_workspace_request(temp.path()), "op_create").unwrap();
+        let remote = temp.path().join("remote.git");
+        init_bare_main(&remote);
+        let app = temp.path().join("repos/app");
+        backend.create_repo(&app).unwrap();
+        backend
+            .add_remote(&app, "origin", remote.to_str().unwrap())
+            .unwrap();
+        let commit = commit_file(&app, "README.md", "one", "initial", &[]).unwrap();
+        // Two members: app (materialized) and lib (in the lock, NOT materialized).
+        write_pull_fixture(
+            temp.path(),
+            vec![
+                ("mem_app", "repos/app", remote.to_str().unwrap(), &commit),
+                ("mem_lib", "repos/lib", remote.to_str().unwrap(), &commit),
+            ],
+        );
+
+        let response =
+            handle_push(&backend, temp.path(), push_request(None, None), "op_push").unwrap();
+
+        assert_eq!(
+            response.response.meta.aggregate_status,
+            crate::AggregateStatus::Rejected
+        );
+        // The valid member must NOT have been pushed — nothing changed.
+        assert_eq!(read_repo_ref(&remote, "refs/heads/main"), None);
+    }
+
     pub(crate) fn push_request(
         unsupported_member: Option<crate::UnsupportedMemberBehavior>,
         remote: Option<&str>,

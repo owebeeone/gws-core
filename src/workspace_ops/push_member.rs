@@ -62,6 +62,34 @@ where
         });
     }
 
+    // F7 (Q2): preflight every selected member before pushing any. The dry-run
+    // path validates remote/refspec and materialization without mutating; if any
+    // member would be Rejected or Failed, reject the whole push so no remote is
+    // advanced. Skipped members are intentional policy, not a failure. A remote
+    // rejecting an otherwise-valid push is a genuine push-time outcome and is still
+    // reported per member in the loop below.
+    let preflight = selected
+        .iter()
+        .map(|member_id| {
+            let member = manifest
+                .members
+                .iter()
+                .find(|member| &member.id == member_id)
+                .ok_or_else(|| ModelError::new(ErrorCode::MemberNotFound, "member not found"))?;
+            Ok(push_member(backend, &root, member, &request, true))
+        })
+        .collect::<ModelResult<Vec<_>>>()?;
+    if preflight.iter().any(|response| {
+        matches!(
+            response.status,
+            crate::MemberStatus::Rejected | crate::MemberStatus::Failed
+        )
+    }) {
+        return Ok(crate::PushResponse {
+            response: response_envelope(context, push_aggregate_status(&preflight), preflight),
+        });
+    }
+
     let progress_interval = request
         .meta
         .policy

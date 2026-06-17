@@ -221,7 +221,7 @@ ratified (`a024907`); `ls_remote` added as the Q1 plan-before-fetch foundation
 | F2 | P1 ✓ | `materialize`/`init` roll back this op's **fresh clones** on mid-batch failure, no stale lock `baf912a` (Q6 reject-partial; existing-member re-checkout rollback deferred) | handle_materialize.rs, handle_init_from_sources.rs | WS3 ✓ |
 | F3 | P1 ✓ | `snapshot`/`tag` now take a `GitBackend` and capture each member's **live observed** head/status (`observed_member_map`); unmaterialized rejected, dirty recorded honestly `60d034f` (+cli `2f7ac72`; Q3 reject-dirty deferred) | handle_materialize.rs | WS4 ✓ |
 | F4 | ~~P1~~ → AD2 | `.gitignore` not resynced on materialize/pull/clone | workspace_ops:504,631,681 | **superseded by AD2** |
-| F5 | P1 | `status` reports `Ok`/`aggregate::Ok` for a **dirty/diverged** member | status:312, 630-643 | WS4 |
+| F5 | P1 ✓ | `status` aggregate now surfaces dirty — new `AggregateStatus::Dirty` (taut) returned when any member's `git_status.dirty`; exit 0, dirty is normal per AD3 `7e4d1df`+`50948ac`. (Lock-divergence already carried by `lock_match: Differs`; branch-vs-upstream divergence deferred.) | status_member.rs | WS4 ✓ |
 | F6 | P1 ✓ | Closed by existing mechanisms — preflight rejects dirty members before any FF (`DirtyMember`, tested by g06) and `fast_forward` self-verify (`f16f258`) makes a dirty-post-FF state unreachable for FF'd members. Local-only members are Noop (not pulled); recording their dirty state is a Q3 question, not F6. No code change. | pull_head_member_preflight.rs | WS3 ✓ |
 | F7 | P1 ✓ | `push` **preflights all members** (remote/refspec/materialization) before pushing any; rejects the batch if any invalid, no remote advanced `8ed50cb` (Q2) | push_member.rs | WS3 ✓ |
 | F8 | P1 | `--sync fetch-only` (and merge/rebase/reset) **accepted but ignored** by core | cli:570,1983; workspace_ops:775-787 | WS6 |
@@ -371,7 +371,7 @@ backend/boundary architecture was settled — it is now a §2 decision.)
   Q1 foundation (`d9b1d68`); F7 push preflight (`8ed50cb`); F2 fresh-clone rollback
   (`baf912a`); F1 materialize observed-state (`b5744d2`); F3 snapshot/tag observe live state
   (`60d034f` + cli `2f7ac72`). Full suite green (95 lib +
-  16 integration), 0 warnings, clippy clean throughout. F6 closed by existing mechanisms (no code). Remaining open
-  P1s each need a small decision: F5 (status `Ok`-for-dirty — no `MemberStatus::Dirty`,
-  pick a dirty-surfacing model), F8 (sync-mode policy, Q4). F9 done (`e4a43ce`,
-  envelope-consistent error JSON). All P2s (F11–F17) remain.
+  16 integration), 0 warnings, clippy clean throughout. F6 closed by existing mechanisms (no code).
+  **The only open P1 is F8** (sync-mode policy, Q4 — `merge`/`rebase`/`reset` accepted-but-ignored;
+  honor `fetch-only`, reject the rest loudly, then implement `reset`→`rebase`/`merge`). F5/F9 done.
+  AD3 ratified + fully implemented (capture/restore, `gwz capture`, branch-restore). All P2s (F11–F17) remain.

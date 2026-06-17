@@ -283,6 +283,7 @@ use super::*;
         let lock_before = read_lock(temp.path()).unwrap();
 
         let snapshot_response = handle_snapshot(
+            &backend,
             temp.path(),
             crate::SnapshotRequest {
                 meta: request_meta_with_actor_selection("agent://tester", &["mem_app"]),
@@ -292,6 +293,7 @@ use super::*;
         )
         .unwrap();
         let tag_response = handle_tag(
+            &backend,
             temp.path(),
             crate::TagRequest {
                 meta: request_meta_with_actor_selection("agent://tester", &["mem_app"]),
@@ -317,6 +319,38 @@ use super::*;
     }
 
     #[test]
+    pub(crate) fn snapshot_records_observed_dirty_state_not_stale_lock() {
+        let temp = TempDir::new("snapshot-observe");
+        let backend = Git2Backend::new();
+        handle_create_workspace(create_workspace_request(temp.path()), "op_create").unwrap();
+        let fixture = RemoteFixture::new("snap-dirty-source");
+        let commit = fixture.commit_and_push("README.md", "one", "initial", &backend);
+        write_materialize_fixture(temp.path(), fixture.remote_url(), &commit);
+        backend
+            .clone_repo(fixture.remote_url(), &temp.path().join("repos/app"))
+            .unwrap();
+        // Dirty the tracked worktree AFTER the lock was recorded (lock says clean).
+        std::fs::write(temp.path().join("repos/app/README.md"), "dirty").unwrap();
+
+        let response = handle_snapshot(
+            &backend,
+            temp.path(),
+            crate::SnapshotRequest {
+                meta: request_meta_with_actor_selection("agent://tester", &["mem_app"]),
+                snapshot_id: "snap_dirty".to_owned(),
+            },
+            "op_snapshot",
+        )
+        .unwrap();
+        assert_eq!(response.response.members.single().member_id, "mem_app");
+
+        // F3: the snapshot records the OBSERVED dirty worktree, not the stale clean
+        // lock (the fixture lock records dirty=false).
+        let snapshot = read_snapshot(temp.path(), "snap_dirty").unwrap();
+        assert_eq!(snapshot.members["mem_app"].dirty, Some(true));
+    }
+
+    #[test]
     pub(crate) fn duplicate_and_invalid_gwz_tags_fail_cleanly() {
         let temp = TempDir::new("tag-errors");
         let backend = Git2Backend::new();
@@ -332,14 +366,17 @@ use super::*;
             meta: request_meta_with_actor_selection("agent://tester", &["mem_app"]),
             tag_name: "release-one".to_owned(),
         };
-        handle_tag(temp.path(), request.clone(), "op_tag").unwrap();
+        handle_tag(&backend, temp.path(), request.clone(), "op_tag").unwrap();
 
         assert_eq!(
-            handle_tag(temp.path(), request, "op_tag").unwrap_err().code,
+            handle_tag(&backend, temp.path(), request, "op_tag")
+                .unwrap_err()
+                .code,
             ErrorCode::TagInvalid
         );
         assert_eq!(
             handle_tag(
+                &backend,
                 temp.path(),
                 crate::TagRequest {
                     meta: request_meta_with_actor_selection("agent://tester", &["mem_app"]),

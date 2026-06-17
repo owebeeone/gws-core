@@ -16,18 +16,22 @@ use crate::workspace::WORKSPACE_MANIFEST;
 
 use super::*;
 
-pub fn handle_snapshot(
+pub fn handle_snapshot<B>(
+    backend: &B,
     start: &Path,
     request: crate::SnapshotRequest,
     operation_id: impl Into<String>,
-) -> ModelResult<crate::SnapshotResponse> {
+) -> ModelResult<crate::SnapshotResponse>
+where
+    B: GitBackend,
+{
     let context = OperationRequest::Snapshot(request.clone()).context(operation_id.into())?;
     let root = resolve_workspace_root(start, request.meta.workspace.as_ref())?;
     let manifest = artifact::read_manifest(&root)?;
     assert_workspace_id(&manifest, request.meta.workspace.as_ref())?;
     let lock = artifact::read_lock(&root)?;
     let selected = resolve_locked_selection(&manifest, &lock, request.meta.selection.as_ref())?;
-    let members = selected_member_map(&lock, &selected)?;
+    let members = observed_member_map(backend, &root, &manifest, &selected)?;
     artifact::write_snapshot(
         &root,
         &artifact::SnapshotArtifact {
@@ -50,11 +54,15 @@ pub fn handle_snapshot(
     })
 }
 
-pub fn handle_tag(
+pub fn handle_tag<B>(
+    backend: &B,
     start: &Path,
     request: crate::TagRequest,
     operation_id: impl Into<String>,
-) -> ModelResult<crate::TagResponse> {
+) -> ModelResult<crate::TagResponse>
+where
+    B: GitBackend,
+{
     let context = OperationRequest::Tag(request.clone()).context(operation_id.into())?;
     let root = resolve_workspace_root(start, request.meta.workspace.as_ref())?;
     let tag_path = root
@@ -71,7 +79,7 @@ pub fn handle_tag(
     assert_workspace_id(&manifest, request.meta.workspace.as_ref())?;
     let lock = artifact::read_lock(&root)?;
     let selected = resolve_locked_selection(&manifest, &lock, request.meta.selection.as_ref())?;
-    let members = selected_member_map(&lock, &selected)?;
+    let members = observed_member_map(backend, &root, &manifest, &selected)?;
     let tag = artifact::TagArtifact {
         schema: artifact::TAG_SCHEMA.to_owned(),
         workspace_id: manifest.workspace.id.clone(),
@@ -372,19 +380,32 @@ pub(crate) fn resolve_locked_selection(
     Ok(selected)
 }
 
-pub(crate) fn selected_member_map(
-    lock: &LockArtifact,
+pub(crate) fn observed_member_map<B: GitBackend>(
+    backend: &B,
+    root: &Path,
+    manifest: &ManifestArtifact,
     selected: &[String],
 ) -> ModelResult<BTreeMap<String, ResolvedMemberArtifact>> {
+    // F3: capture each member's LIVE observed state (head/status), not the stale
+    // lock. Unmaterialized members cannot be observed, so they are rejected; dirty
+    // state is recorded honestly (rejecting dirty is the Q3 policy, deferred).
     let mut members = BTreeMap::new();
     for member_id in selected {
-        let member = lock.members.get(member_id).ok_or_else(|| {
-            ModelError::new(
-                ErrorCode::LockNotFound,
-                format!("lock record missing for member '{member_id}'"),
-            )
-        })?;
-        members.insert(member_id.clone(), member.clone());
+        let member = manifest
+            .members
+            .iter()
+            .find(|member| &member.id == member_id)
+            .ok_or_else(|| ModelError::new(ErrorCode::MemberNotFound, "member not found"))?;
+        let member_root = root.join(&member.path);
+        if !(member_root.exists() && backend.is_repository(&member_root)?) {
+            return Err(ModelError::new(
+                ErrorCode::MemberNotFound,
+                format!("member '{member_id}' is not materialized"),
+            ));
+        }
+        let head = backend.head(&member_root)?;
+        let status = backend.status(&member_root)?;
+        members.insert(member_id.clone(), resolved_member(member, &head, &status));
     }
     Ok(members)
 }

@@ -218,13 +218,15 @@ impl GitBackend for Git2Backend {
 
         let local_ref_name = format!("refs/heads/{branch}");
         let mut local_ref = repo.find_reference(&local_ref_name).map_err(git_error)?;
+        let target_object = repo.find_object(target, None).map_err(git_error)?;
+        let mut checkout = git2::build::CheckoutBuilder::new();
+        checkout.safe();
+        repo.checkout_tree(&target_object, Some(&mut checkout))
+            .map_err(git_error)?;
         local_ref
             .set_target(target, "gwz fast-forward")
             .map_err(git_error)?;
         repo.set_head(&local_ref_name).map_err(git_error)?;
-        let mut checkout = git2::build::CheckoutBuilder::new();
-        checkout.safe();
-        repo.checkout_head(Some(&mut checkout)).map_err(git_error)?;
         Ok(GitUpdateResult {
             updated: true,
             commit: Some(target.to_string()),
@@ -856,7 +858,8 @@ mod tests {
             .find_commit(git2::Oid::from_str(&first).unwrap())
             .unwrap()
             .id();
-        let second = commit_file(&source_path, "README.md", "two", "second", &[parent]).unwrap();
+        let second =
+            commit_file(&source_path, "dev-docs/new.md", "two", "second", &[parent]).unwrap();
         backend
             .push(&source_path, "origin", "refs/heads/main:refs/heads/main")
             .unwrap();
@@ -866,6 +869,11 @@ mod tests {
             .fast_forward(&clone_path, "main", "refs/remotes/origin/main")
             .unwrap();
         assert_eq!(backend.head(&clone_path).unwrap().commit, Some(second));
+        assert_eq!(
+            fs::read_to_string(clone_path.join("dev-docs/new.md")).unwrap(),
+            "two"
+        );
+        assert!(!backend.status(&clone_path).unwrap().is_dirty);
 
         backend.checkout_commit(&clone_path, &first).unwrap();
         let head = backend.head(&clone_path).unwrap();
@@ -895,6 +903,9 @@ mod tests {
         message: &str,
         parents: &[git2::Oid],
     ) -> Result<String, git2::Error> {
+        if let Some(parent) = Path::new(relative_path).parent() {
+            fs::create_dir_all(repo_path.join(parent)).unwrap();
+        }
         fs::write(repo_path.join(relative_path), content).unwrap();
         stage_path(repo_path, relative_path)?;
 

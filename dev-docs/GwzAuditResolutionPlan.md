@@ -121,19 +121,22 @@ commit, which merely *relocates* the churn). So gitlink stays a **deferred spike
 
 ## 3. Findings Register
 
-The confirmed P0 (F0) is fixed and committed. F4/F10 are **superseded** by §2
-decisions and no longer drive standalone work. "WS" maps to §4.
+**Resolved 2026-06-17:** F0 (incident + full AD1 primitive contract `f16f258`), F18
+(`57c68f5`), F7 (`8ed50cb`), F2 (`baf912a`), F1 (`b5744d2`) — ✓ below. AD1/AD2/Q6
+ratified (`a024907`); `ls_remote` added as the Q1 plan-before-fetch foundation
+(`d9b1d68`); all four src god files split (WS-split-cli/core done). F4/F10 are
+**superseded** by §2 decisions and no longer drive standalone work. "WS" maps to §4.
 
 | ID | Sev | Finding | File:line | WS |
 | --- | --- | --- | --- | --- |
-| F0 | P0 ✓committed | FF moved ref before checkout (incident) — fixed `79d23c7` | git/mod.rs | WS0 (done) |
-| F1 | P1 | `materialize`/`pull_snapshot` write lock+response from **planned** target, never re-observe worktree | workspace_ops:594-616 | WS4 |
-| F2 | P1 | `materialize`/`init` **partial mutation** — members mutate, first `outcome?` aborts before lock write; stale lock / orphan clones; no recovery | workspace_ops:562-616, 316-406 | WS3,WS5 |
+| F0 | P0 ✓ | FF incident fixed `79d23c7`; primitive now self-verifies + porcelain-contract-tested (`fast_forward`/`checkout_commit`) `f16f258` | git/gitbackend.rs | WS0 ✓ |
+| F1 | P1 ✓ | `materialize` re-observes head/status post-mutation, records observed state + computed `lock_match` `b5744d2`; `clone_workspace`/`pull_snapshot` inherit via delegation | handle_materialize.rs | WS4 ✓ |
+| F2 | P1 ✓ | `materialize`/`init` roll back this op's **fresh clones** on mid-batch failure, no stale lock `baf912a` (Q6 reject-partial; existing-member re-checkout rollback deferred) | handle_materialize.rs, handle_init_from_sources.rs | WS3 ✓ |
 | F3 | P1 | `snapshot`/`tag` capture **stale lock**, not live worktree (no backend) | workspace_ops:421-437, 465-479 | WS4 |
 | F4 | ~~P1~~ → AD2 | `.gitignore` not resynced on materialize/pull/clone | workspace_ops:504,631,681 | **superseded by AD2** |
 | F5 | P1 | `status` reports `Ok`/`aggregate::Ok` for a **dirty/diverged** member | status:312, 630-643 | WS4 |
 | F6 | P1 | `pull --head` does **not reject dirty post-FF** state before writing the lock | workspace_ops:787 | WS3 |
-| F7 | P1 | `push` has **no preflight-before-mutation** → partial remote advance under default atomic | workspace_ops:855-911, 1899, 2010 | WS3 |
+| F7 | P1 ✓ | `push` **preflights all members** (remote/refspec/materialization) before pushing any; rejects the batch if any invalid, no remote advanced `8ed50cb` (Q2) | push_member.rs | WS3 ✓ |
 | F8 | P1 | `--sync fetch-only` (and merge/rebase/reset) **accepted but ignored** by core | cli:570,1983; workspace_ops:775-787 | WS6 |
 | F9 | P1 | CLI `--json`/`--jsonl` **error path** prints plain stderr, not structured output | cli:194-209, 1019 | WS7 |
 | F10 | ~~P2~~ → Q1 | `pull --head` fetches during preflight, advancing remote-tracking refs | workspace_ops:1710 | **superseded by Q1** |
@@ -144,7 +147,7 @@ decisions and no longer drive standalone work. "WS" maps to §4.
 | F15 | P2 | Generic runtime `aggregate_status` has **no `Partial`**; top-level errors drop `member_id`/`member_path` | operation:768,834 | WS5 |
 | F16 | P2 | Human `status --no-files` can **hide dirty** state | cli:1063,1238; status:326 | WS7 |
 | F17 | P2 | `status` models renames but rename detection not enabled/tested | git/mod.rs:253 | WS9 |
-| **F18** | **P1** | **operation code mutates the Git index via `git2`** — `stage_workspace_git_metadata` opens `git2::Repository`, `add_all`, `index.write()`, violating `GWZGitBackendDecision`'s "operation code MUST NOT expose git2" | workspace_ops:2229-2240 | **WS-backend** |
+| F18 | P1 ✓ | `stage_workspace_git_metadata` moved behind `GitBackend::stage_paths` (self-verifying, porcelain-contract-tested); production `workspace_ops` no longer names `git2` `57c68f5` | git/gitbackend.rs | WS-backend ✓ |
 
 ## 4. Remediation Workstreams
 
@@ -274,3 +277,11 @@ backend/boundary architecture was settled — it is now a §2 decision.)
   gitlink a deferred spike that buys no consistency over the recorded SHA (boundary
   marker, not sync). Q6 — reject-partial for v0: roll back where possible, explicit
   `Partial` for `push`, no recovery metadata. Q1–Q5 still at *recommended*.
+- **Implementation pass** (2026-06-17): all four `gwz-core` src god files split
+  (`workspace_ops` `0e352a0`, `operation` `3659913`, `status` `dd07720`, `git`
+  `86ef63d`); F18 `stage_paths` (`57c68f5`); F0 primitive AD1 contract — `fast_forward`
+  + `checkout_commit` self-verify + porcelain contract tests (`f16f258`); `ls_remote`
+  Q1 foundation (`d9b1d68`); F7 push preflight (`8ed50cb`); F2 fresh-clone rollback
+  (`baf912a`); F1 materialize observed-state (`b5744d2`). Full suite green (94 lib +
+  16 integration), 0 warnings, clippy clean throughout. Next open P1s: F3, F5, F6, F8,
+  F9.

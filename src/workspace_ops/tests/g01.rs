@@ -162,6 +162,18 @@ pub(crate) const TEST_COMMIT: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
             })
         }
 
+        fn checkout_branch(
+            &self,
+            _path: &Path,
+            _branch: &str,
+            commit: &str,
+        ) -> ModelResult<crate::git::GitUpdateResult> {
+            Ok(crate::git::GitUpdateResult {
+                updated: true,
+                commit: Some(commit.to_owned()),
+            })
+        }
+
         fn status(&self, _path: &Path) -> ModelResult<crate::git::GitStatus> {
             Ok(crate::git::GitStatus::clean())
         }

@@ -413,6 +413,46 @@ use super::*;
         index.write()
     }
 
+    #[test]
+    pub(crate) fn checkout_branch_matches_porcelain_and_refuses_diverged_reset() {
+        let temp = TempDir::new("checkout-branch");
+        let backend = Git2Backend::new();
+        let base = temp.path().join("base");
+        backend.create_repo(&base).unwrap();
+        let a = commit_file(&base, "f.txt", "a\n", "A", &[]).unwrap();
+        let a_oid = git2::Oid::from_str(&a).unwrap();
+        let b = commit_file(&base, "f.txt", "b\n", "B", &[a_oid]).unwrap();
+
+        let prim = temp.path().join("prim");
+        let porc = temp.path().join("porc");
+        copy_repo(&base, &prim);
+        copy_repo(&base, &porc);
+
+        // Create `feature` at the older commit A and check out onto it.
+        let result = backend.checkout_branch(&prim, "feature", &a).unwrap();
+        assert_eq!(result.commit.as_deref(), Some(a.as_str()));
+        run_git(&porc, &["checkout", "-b", "feature", &a]);
+
+        // Byte-identical end state vs porcelain: on `feature` at A, clean.
+        assert_eq!(rev_parse(&prim, "HEAD"), rev_parse(&porc, "HEAD"));
+        assert_eq!(rev_parse(&prim, "HEAD"), a);
+        assert_eq!(
+            rev_parse(&prim, "HEAD^{tree}"),
+            rev_parse(&porc, "HEAD^{tree}")
+        );
+        assert!(status_porcelain(&prim).trim().is_empty());
+        let head = backend.head(&prim).unwrap();
+        assert!(!head.is_detached);
+        assert_eq!(head.branch.as_deref(), Some("feature"));
+        // `main` is untouched at B — never silently reset.
+        assert_eq!(rev_parse(&prim, "refs/heads/main"), b);
+
+        // Refuse to move `main` (at B) back to A — that would orphan B.
+        let err = backend.checkout_branch(&prim, "main", &a).unwrap_err();
+        assert_eq!(err.code, ErrorCode::DivergedMember);
+        assert_eq!(rev_parse(&prim, "refs/heads/main"), b);
+    }
+
     pub(crate) fn init_bare_main(path: &Path) {
         let repo = git2::Repository::init_bare(path).unwrap();
         repo.set_head("refs/heads/main").unwrap();

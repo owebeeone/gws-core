@@ -31,6 +31,16 @@ pub trait GitBackend {
         upstream_ref: &str,
     ) -> ModelResult<GitUpdateResult>;
     fn checkout_commit(&self, path: &Path, commit: &str) -> ModelResult<GitUpdateResult>;
+    /// Put HEAD on `branch` at `commit` — create the branch if missing, checkout if it
+    /// is already there. Per AD3(c)'s orphan-safety rule, REFUSE (`DivergedMember`) if
+    /// the branch exists at a different commit — never silently reset it. Self-verifies
+    /// HEAD is on the branch at the commit with a clean worktree.
+    fn checkout_branch(
+        &self,
+        path: &Path,
+        branch: &str,
+        commit: &str,
+    ) -> ModelResult<GitUpdateResult>;
     fn status(&self, path: &Path) -> ModelResult<GitStatus>;
     fn head(&self, path: &Path) -> ModelResult<GitHeadState>;
     fn remotes(&self, path: &Path) -> ModelResult<Vec<GitRemote>>;
@@ -293,6 +303,56 @@ impl GitBackend for Git2Backend {
             .map_err(git_error)?;
         repo.set_head_detached(oid).map_err(git_error)?;
         verify_checkout_state(path, oid)?;
+        Ok(GitUpdateResult {
+            updated: true,
+            commit: Some(oid.to_string()),
+        })
+    }
+
+    fn checkout_branch(
+        &self,
+        path: &Path,
+        branch: &str,
+        commit: &str,
+    ) -> ModelResult<GitUpdateResult> {
+        let repo = open_repo(path)?;
+        let oid = git2::Oid::from_str(commit).map_err(git_error)?;
+        let ref_name = format!("refs/heads/{branch}");
+        // AD3(c) orphan-safety: never silently reset a branch. Create it if missing;
+        // refuse if it already exists at a different commit (that would orphan work).
+        match repo.find_reference(&ref_name) {
+            Ok(existing) => {
+                let existing_oid = existing.peel_to_commit().map_err(git_error)?.id();
+                if existing_oid != oid {
+                    return Err(ModelError::new(
+                        ErrorCode::DivergedMember,
+                        format!(
+                            "branch '{branch}' is at {existing_oid}, not the target {oid}; refusing to move it"
+                        ),
+                    ));
+                }
+            }
+            Err(err) if err.code() == git2::ErrorCode::NotFound => {
+                let target = repo.find_commit(oid).map_err(git_error)?;
+                repo.branch(branch, &target, false).map_err(git_error)?;
+            }
+            Err(err) => return Err(git_error(err)),
+        }
+        let object = repo.find_object(oid, None).map_err(git_error)?;
+        let mut checkout = git2::build::CheckoutBuilder::new();
+        checkout.safe();
+        repo.checkout_tree(&object, Some(&mut checkout))
+            .map_err(git_error)?;
+        repo.set_head(&ref_name).map_err(git_error)?;
+        verify_checkout_state(path, oid)?;
+        // AD1 self-verify: HEAD is attached to the branch, not detached.
+        let observed = self.head(path)?;
+        if observed.is_detached || observed.branch.as_deref() != Some(branch) {
+            return Err(ModelError::new(
+                ErrorCode::GitCommandFailed,
+                format!("post-checkout HEAD is not on branch '{branch}'"),
+            ));
+        }
         Ok(GitUpdateResult {
             updated: true,
             commit: Some(oid.to_string()),

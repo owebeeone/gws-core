@@ -138,7 +138,7 @@ ratified (`a024907`); `ls_remote` added as the Q1 plan-before-fetch foundation
 | F6 | P1 ✓ | Closed by existing mechanisms — preflight rejects dirty members before any FF (`DirtyMember`, tested by g06) and `fast_forward` self-verify (`f16f258`) makes a dirty-post-FF state unreachable for FF'd members. Local-only members are Noop (not pulled); recording their dirty state is a Q3 question, not F6. No code change. | pull_head_member_preflight.rs | WS3 ✓ |
 | F7 | P1 ✓ | `push` **preflights all members** (remote/refspec/materialization) before pushing any; rejects the batch if any invalid, no remote advanced `8ed50cb` (Q2) | push_member.rs | WS3 ✓ |
 | F8 | P1 | `--sync fetch-only` (and merge/rebase/reset) **accepted but ignored** by core | cli:570,1983; workspace_ops:775-787 | WS6 |
-| F9 | P1 | CLI `--json`/`--jsonl` **error path** prints plain stderr, not structured output | cli:194-209, 1019 | WS7 |
+| F9 | P1 ✓ | top-level CLI errors render envelope-consistent JSON under `--json`/`--jsonl` (`CliError` carries the gwz-core code); human/porcelain unchanged on stderr `e4a43ce` (gwz-cli) | gwz-cli clirequest/globalargs | WS7 ✓ |
 | F10 | ~~P2~~ → Q1 | `pull --head` fetches during preflight, advancing remote-tracking refs | workspace_ops:1710 | **superseded by Q1** |
 | F11 | P2 | `lock_match` ignores branch/detached/upstream; `Matches` for a dirty member | status:556 | WS4 |
 | F12 | P2 | `write_atomic` not crash-durable (no fsync) + fixed `{name}.tmp` race | artifact:335-343, 381-387 | WS8 |
@@ -286,5 +286,5 @@ backend/boundary architecture was settled — it is now a §2 decision.)
   (`60d034f` + cli `2f7ac72`). Full suite green (95 lib +
   16 integration), 0 warnings, clippy clean throughout. F6 closed by existing mechanisms (no code). Remaining open
   P1s each need a small decision: F5 (status `Ok`-for-dirty — no `MemberStatus::Dirty`,
-  pick a dirty-surfacing model), F8 (sync-mode policy, Q4), F9 (CLI structured error
-  path — pick the error-JSON contract shape).
+  pick a dirty-surfacing model), F8 (sync-mode policy, Q4). F9 done (`e4a43ce`,
+  envelope-consistent error JSON). All P2s (F11–F17) remain.

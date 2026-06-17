@@ -483,6 +483,13 @@ pub(crate) fn aggregate_status(members: &[crate::MemberResponse]) -> crate::Aggr
         .any(|member| member.status == crate::MemberStatus::Rejected)
     {
         crate::AggregateStatus::Rejected
+    } else if members
+        .iter()
+        .any(|member| member.git_status.as_ref().is_some_and(|status| status.dirty))
+    {
+        // F5/AD3: a dirty member is observable state, not a failure — surface it in the
+        // aggregate instead of masquerading as a clean `Ok` (exit code stays 0).
+        crate::AggregateStatus::Dirty
     } else {
         crate::AggregateStatus::Ok
     }

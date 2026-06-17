@@ -93,7 +93,8 @@ SCHEMA = schema(
          noop=2,
          rejected=3,
          partial=4,
-         failed=5),
+         failed=5,
+         dirty=6),
 
     # Per-member result status.
     MemberStatus=Enum(

@@ -83,6 +83,7 @@ pub enum AggregateStatus {
     Rejected,
     Partial,
     Failed,
+    Dirty,
 }
 impl AggregateStatus {
     pub fn wire(self) -> i64 { match self {
@@ -92,6 +93,7 @@ impl AggregateStatus {
         Self::Rejected => 3,
         Self::Partial => 4,
         Self::Failed => 5,
+        Self::Dirty => 6,
     } }
     pub fn from_wire(v: i64) -> Self { match v {
         0 => Self::Accepted,
@@ -100,6 +102,7 @@ impl AggregateStatus {
         3 => Self::Rejected,
         4 => Self::Partial,
         5 => Self::Failed,
+        6 => Self::Dirty,
         _ => panic!("bad AggregateStatus wire value {}", v),
     } }
 }

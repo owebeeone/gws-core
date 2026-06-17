@@ -107,6 +107,11 @@ mod tests {
             .unwrap();
 
         assert!(git_status.dirty);
+        // F5: a dirty member surfaces in the aggregate (no longer masquerades as Ok).
+        assert_eq!(
+            response.response.meta.aggregate_status,
+            crate::AggregateStatus::Dirty
+        );
         assert_eq!(git_status.unstaged, 1);
         assert_eq!(git_status.untracked, 1);
         assert_eq!(

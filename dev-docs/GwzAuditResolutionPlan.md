@@ -1,223 +1,254 @@
 # GWZ Audit Resolution Plan
 
-Status: draft plan (consolidation of two independent audits)
+Status: consolidated single plan — Review-55 R1 **and** R2 folded into the body
+(no addendum). One decision table, one finding register, one workstream sequence.
 Date: 2026-06-17
 Sources:
 - `dev-docs/GwzAudit.md` — the audit prompt (mutation-order safety)
-- `dev-docs/GwzAudit-Response48.md` — independent review (Opus 4.8)
-- `dev-docs/GwzAudit-Response55.md` — independent review (agents: Pascal / Nietzsche / Nash / Socrates)
+- `dev-docs/GwzAudit-Response48.md` — independent audit (Opus 4.8)
+- `dev-docs/GwzAudit-Response55.md` — independent audit (GPT-5.5 agents)
+- `dev-docs/GwzAuditResolutionPlan-Review55.md` — review of this plan (R1)
+- `dev-docs/GwzAuditResolutionPlan-Review55-2.md` — second review (R2)
+- Disposition history: §7.
 
-Starting state (both reviews, unchanged):
-- `gwz-core` @ `40a1be1` (main), working tree dirty: `src/git/mod.rs` (uncommitted fast-forward fix)
-- `gwz-cli` @ `f47a442` (main), clean
+Starting state: the audit ran against `gwz-core` @ `40a1be1` / `gwz-cli` @
+`f47a442`. **The FF fix (F0) is now committed** — `79d23c7` (fix + regression
+test), then `ae5e9b2` (audit docs). So WS0 is done; the plan builds on `ae5e9b2`.
 
-This plan merges, de-duplicates, and reconciles the two reviews into an ordered,
-test-first remediation. Where the reviews diverged on severity it says so and
-takes a position. It is a plan, not an implementation — do not change code until
-the policy decisions in §2 are made.
+This is a plan, not an implementation. **Do not change code until the §2
+decisions are made** (they are blocking, on paper, and reshape the work).
 
 ## 1. Root Cause And Guiding Principle
 
-Both reviews independently reached the same conclusion: the confirmed
-fast-forward bug was one instance of a class, not an isolated defect.
+The confirmed fast-forward bug was one instance of a class, not an isolated defect:
 
 > Durable state — Git refs, remote-tracking refs, worktrees, index, lock files,
-> manifests, snapshots, tags, and the claims in responses/events — can be
-> advanced or recorded **before** the worktree/index/member state has been
-> proven to match it.
+> manifests, snapshots, tags, and the claims in responses/events — can be advanced
+> or recorded **before** the worktree/index/member state is proven to match it.
 
-The corrective discipline (both reviews agree) is to make every selected-member
-operation **phased**:
+The corrective discipline is to make every selected-member operation **phased**:
 
-- **A. Validate** — non-mutating checks for *every* selected member. No member
-  is mutated until the whole selection passes.
-- **B. Mutate** — perform the Git/filesystem mutation per member.
-- **C. Observe** — re-read `HEAD` and `status` from each mutated member.
-- **D. Record** — build lock files, manifests, and responses from the
-  **observed** state (C), never from planned/intended state.
+- **A. Validate** — non-mutating checks for *every* selected member; no member is
+  mutated until the whole selection passes.
+- **B. Mutate** — the Git/filesystem mutation per member, through a **semantic
+  backend primitive** (never raw ref/index/worktree steps — see AD1).
+- **C. Observe** — re-read `HEAD`/`status` from each mutated member.
+- **D. Record** — build locks, manifests, and responses from the **observed**
+  state (C), never from planned/intended state.
 
 `handle_pull_head` is the closest existing model (it observes before writing the
-lock) but is itself incomplete (it fetches during Validate, and does not reject a
-dirty post-mutation state). This skeleton should be **extracted into a shared
-helper** that all selected-member handlers use — which is also the natural seam
-for splitting the 4175-LOC `workspace_ops/mod.rs` god file (see §6).
+lock) but is incomplete: it *fetches during Validate* and does not *reject a dirty
+post-mutation state*. Both are fixed below (Q1, F6). The phased skeleton is
+extracted into a shared helper that all handlers use — the natural seam for
+splitting `workspace_ops/mod.rs` (§6).
 
-## 2. Policy Decisions To Make First (blocking)
+## 2. Decisions To Make First (blocking)
 
-Several fixes are under-determined until these are decided. Recommended answers
-are given; override as needed, but answer them before §4 implementation.
+Recommended answers given; override as needed, but answer them before §4. AD1/AD2
+are architecture decisions; Q1–Q6 are policy.
 
-| # | Question | Recommended answer |
+| # | Decision | Recommended answer |
 | --- | --- | --- |
-| Q1 | Does the atomic guarantee cover **remote-tracking refs** advanced by `fetch`? | **No** (they are derived/re-fetchable). But run a single **fetch phase for all members before Validate**, so fetch is not interleaved with per-member aborts and Validate sees accurate remote state. |
-| Q2 | Is `push` **atomic by default**? | True cross-remote atomicity is impossible. Default = **preflight all members** (remote exists, refspec resolves, optional dry-run) **then push**; real partial only under an explicit partial policy, reported as `Partial` with per-member identity. |
-| Q3 | Do `snapshot`/`tag` capture the **live worktree** or the **lock**? | **Live observed** state (matches REQ-084 "current state"). Reject dirty/unmaterialized members unless an explicit flag records them with a dirty marker. Never claim `lock_match: Matches` without verifying. |
-| Q4 | What do `fetch-only` / `ff-only` / `merge` / `rebase` / `reset` mean, and must core honor them? | Core **must** honor them. `fetch-only` = update remote-tracking refs only, **no** branch/worktree mutation. `ff-only` = today's default. `merge`/`rebase`/`reset` = implement, or **reject loudly** — never silently downgrade to ff-only. |
-| Q5 | Does `--force materialize` allow a **dirty end state**? | No. Force permits **overwriting** a dirty/occupied start, but the member must end **clean at the target commit**, verified in phase C. |
-| Q6 | What **recovery metadata** exists when partial mutation is allowed? | A `.gwz/recovery/<operation_id>.yml` listing each member's terminal state (mutated/observed), plus `AggregateStatus::Partial` and per-member status in the response. |
+| AD1 | Mutating-Git strategy (revisits `GWZGitBackendDecision`) | libgit2 stays *behind a strict boundary*, each mutating primitive **contract-proven porcelain-grade** (detail below). Not "porcelain-only CLI" by fiat. |
+| AD2 | Root/member boundary model | `.git/info/exclude` as the interim; **bare-gitlink is a spike, not yet a recommendation** (detail below). Not "resync `.gitignore`". |
+| Q1 | Is `fetch` inside the atomic guarantee? | **Treat fetch as mutation.** Plan with non-mutating `ls-remote` (libgit2 `Remote::connect`+`list`); fetch only *after* the whole selection passes Validate; if a remote-tracking-ref advance persists after failure, report it as an explicit member outcome. (Removes F10; honors "failed = nothing changed". Does not force the CLI.) |
+| Q2 | Is `push` atomic by default? | Cross-remote atomicity is impossible. Default = **preflight all** (remote exists, refspec resolves, optional dry-run) **then push**; real partial only under explicit policy, reported `Partial` with per-member identity. |
+| Q3 | Do `snapshot`/`tag` capture the live worktree or the lock? | **Live observed** state (REQ-084 "current state"). Reject dirty/unmaterialized unless an explicit flag records a dirty marker. Never claim `lock_match: Matches` unverified. |
+| Q4 | Must core honor `fetch-only`/`ff-only`/`merge`/`rebase`/`reset`? | **Yes.** `fetch-only` = no branch/worktree mutation; `ff-only` = today's default; `merge`/`rebase`/`reset` = implement or **reject loudly** — never silently downgrade. |
+| Q5 | Does `--force materialize` allow a dirty end state? | No. Force permits *overwriting* a dirty/occupied start, but the member must end **clean at the target commit**, verified in phase C. |
+| Q6 | Recovery metadata — **a schema question, not a path** | Decide: (a) is it needed for v0, or do we **reject partial mutation until recovery is designed**? (b) journal vs recovery-record vs event-log; (c) local-only `.gwz/` vs versioned; (d) what command lists/repairs/clears it; (e) how it interacts with JSON/JSONL output. `GWZDesign` defers persistent op logs, so this is a real model decision — **no ad-hoc `.gwz/recovery/<op>.yml`**. |
 
-## 3. Consolidated Findings Register
+### AD1 — the backend primitive contract (makes "contract-proven" enforceable)
 
-Severity is the reconciled view. "Source" shows which review(s) raised it; "WS"
-maps to the workstream in §4. The confirmed P0 is fixed but **uncommitted**.
+`GWZGitBackendDecision` is "accepted for v0: git2 behind a mandatory backend
+boundary." The incident reopens it. The decision is not "abandon libgit2" — it is
+to make the boundary *enforceable* and each mutating primitive *provable*:
 
-| ID | Sev | Finding | Source | File:line | WS |
-| --- | --- | --- | --- | --- | --- |
-| F0 | P0✓fixed | FF moved ref before checkout (incident) — fixed, not committed | both | git/mod.rs:219-229 (dirty) | WS0 |
-| F1 | P1 | `materialize`/`pull_snapshot` write lock+response from **planned** target, never re-observe worktree | both | workspace_ops:594-616 | WS4 |
-| F2 | P1 | `materialize`/`init` **partial mutation**: members mutate, first `outcome?` aborts before lock write; stale lock / orphan clones; no recovery | both | workspace_ops:562-616, 316-406 | WS3,WS5 |
-| F3 | P1 | `snapshot`/`tag` capture **stale lock**, not live worktree (no backend) | both | workspace_ops:421-437, 465-479 | WS4 |
-| F4 | P1 | `.gitignore` not resynced by `materialize`/`pull_snapshot`/`clone_workspace` → member paths show untracked | 48 | workspace_ops:504,631,681 | WS8 |
-| F5 | P1 | `status` reports `MemberStatus::Ok` + `aggregate::Ok` for a **dirty/diverged** member | both | status:312, 630-643 | WS4 |
-| F6 | P1 | `pull --head` does **not reject dirty post-fast-forward** state before writing the success lock | 55 | workspace_ops:787 | WS3 |
-| F7 | P1 | `push` has **no preflight-before-mutation**: validates+pushes in one pass → partial remote advance under default atomic | 55 (48 conceded) | workspace_ops:855-911, 1899, 2010 | WS3 |
-| F8 | P1 | `--sync fetch-only` (and merge/rebase/reset) **accepted but ignored** by core; pull still fast-forwards | 55 (verified) | cli:570,1983; workspace_ops:775-787 | WS6 |
-| F9 | P1 | CLI `--json`/`--jsonl` **error path** prints plain stderr, not structured output (machine consumers lose detail) | 55 (verified) | cli:194-209, 1019 | WS7 |
-| F10 | P2 | `pull --head` **fetches during preflight** → clean member's remote-tracking refs advance even if another member aborts | 55 (48: P2) | workspace_ops:1710 | WS3,WS6 |
-| F11 | P2 | `lock_match` ignores branch/detached/upstream; returns `Matches` for a dirty-but-matching member | 48 | status:556 | WS4 |
-| F12 | P2 | `write_atomic` rename-atomic but **not crash-durable** (no fsync) and fixed `{name}.tmp` (cross-process race) | both | artifact:335-343, 381-387 | WS8 |
-| F13 | P2 | `snapshot` lacks the **duplicate-ID guard** that `tag` has | 55 (verified) | workspace_ops:414-446 vs 458 | WS8 |
-| F14 | P2 | manifest→lock→gitignore writes **not semantically atomic** (first-write-ahead on later failure) | both | workspace_ops:134,141,227,403-406 | WS8 |
-| F15 | P2 | Generic runtime `aggregate_status` has **no `Partial`**; top-level errors lose `member_id`/`member_path` | 55 | operation:768,834 | WS5 |
-| F16 | P2 | Human `status --no-files` can **hide dirty** state (only branch text) | 55 | cli:1063,1238; status:326 | WS7 |
-| F17 | P2 | `status` models renames but **rename detection not enabled/tested** | 55 | git/mod.rs:253 | WS9 |
+- **No raw composition in operation code.** Operation code calls only *semantic*
+  primitives; it never sequences ref/index/worktree steps and never names `git2`.
+  Forbidden outside `src/git/*`: `git2::Repository`, `checkout_tree`,
+  `set_target`, `set_head`, `set_head_detached`, raw index writes.
+- **Each mutating primitive documents** its preconditions, the mutation it
+  performs, the **final observed state**, and its failure state.
+- **The primitive self-verifies:** it re-reads `HEAD`/index/worktree and confirms
+  the intended final state *before returning success* (the phased "Observe" pushed
+  down into the backend — exactly what the FF bug lacked).
+- **Failure-injection tests are required**, not only happy-path comparisons with
+  porcelain. Contract tests can prove specific success/failure behaviors; they
+  can't prove crash safety or all interleavings — say so.
+- **Per-primitive CLI fallback:** if a libgit2 primitive cannot meet this contract
+  without hand-sequencing raw ref/index/worktree steps, *that primitive* falls
+  back to the `git` CLI. (Keeps libgit2's `transfer_progress` callbacks and no-
+  subprocess parallelism where it earns them; uses the CLI only where it must.)
 
-## 4. Remediation Workstreams (ordered)
+### AD2 — root/member boundary (bare-gitlink is a spike)
 
-Each workstream is test-first (write the red test, then the fix) per
-`AGENTS.md`, and sized to stay reviewable (~≤500 LOC net per step).
+| Option | Verdict |
+| --- | --- |
+| Committed `.gitignore` block | Current; leaky — dirties a versioned file, not a real boundary, duplicates membership. Not the long-term model. |
+| `.git/info/exclude` | **Interim** — local, non-versioned, cheap, not thrown away by the eventual model. |
+| **Bare gitlink** (mode 160000, no `.gitmodules`) | A **spike, not a recommendation.** Verified upside: root `git status`/`git add .` treat the member as one unit, and `git submodule` can't orchestrate it ("no mapping in `.gitmodules`") — so submodule-workflow sharpness is absent by construction. Verified cost: it duplicates the *volatile* commit oid, so a root `git commit` can pin a **stale** pointer — a fresh instance of the audit's own class. Large enough that gitlink is **not implied as the destination**. |
+| External checkout root | Avoids nested repos; changes UX/path assumptions. |
 
-### WS0 — Land the baseline (do now)
-The confirmed P0 fix is only in the working tree. Commit `git/mod.rs` (the
-`checkout_tree`-before-ref reorder + the nested-new-file regression test) so the
-fix is durable and the rest of the plan builds on a known-good base.
+The bare-gitlink spike must answer, **before** any implementation, whether it is a
+*committed* projection, an *index-only* projection, or *rejected for v0* — and
+prove behavior across normal Git workflows:
+- Root `git status` with clean member / dirty member / untracked inside member /
+  member `HEAD` ≠ `gwz.lock.yml`.
+- Root `git add .` / `reset` / `clean -fd` / `checkout` / `switch` / `merge`; clone
+  + checkout of root history containing gitlinks.
+- Index-only vs committed gitlink tree entries; branch switch where the gitlink oid
+  changes but the member worktree has local changes.
+- `gwz status` when root gitlink, lock, and live member `HEAD` disagree.
+- `ignoreSubmodules` + user global git config; ordinary tools seeing gitlinks
+  without `.gitmodules`.
 
-### WS1 — Decide the policy matrix (§2)
-Blocking for WS3, WS4, WS6. Write the decisions into this doc (or a
-`GwzPolicy.md`) so the phased refactor has a spec.
+Do **not** implement gitlink as "same pattern as `.gitignore`" until that
+projection-mode question is decided.
 
-### WS2 — Red tests for the risk class (before fixes)
-Land these as failing tests that pin the invariants, then make them pass in WS3–WS5:
-- Fake backend: `fast_forward`/`checkout_commit` return `Ok` but `status()` is
-  dirty → `pull`/`materialize` must error and leave the lock unchanged (F1,F6).
-- Two-member partial: member 1 succeeds, member 2 fails after preflight →
-  pin behavior for `pull`/`materialize`/`push` (no mutation, or explicit partial
-  + recovery) (F2,F7).
-- `--sync fetch-only`: member at A, remote at B → `HEAD` stays A (F8).
-- Structured JSON/JSONL error record on a failing `--jsonl pull` (F9).
+## 3. Findings Register
 
-### WS3 — The phased-operation refactor (core of the plan)
-Extract the **Validate → Mutate → Observe → Record** skeleton into a shared
-helper and convert each selected-member handler onto it:
-- **pull --head**: move `fetch` to a pre-Validate fetch phase (F10); Validate all
-  before mutating; after FF, **reject dirty observed state** before recording (F6).
-- **push**: add a Validate phase (remote exists, refspec resolves) for all
-  members before any `backend.push`; partial only under explicit policy (F7).
-- **materialize / init**: complete Validate (target availability + commit
-  reachability for *all* members) before any clone/checkout; on mid-batch
-  failure, roll back this op's fresh clones or emit explicit partial + recovery (F2).
-By now `workspace_ops` is already split by operation seam (§6); this lands the
-shared phase helper and the per-handler fixes in those now-small modules.
+The confirmed P0 (F0) is fixed and committed. F4/F10 are **superseded** by §2
+decisions and no longer drive standalone work. "WS" maps to §4.
 
-### WS4 — Record observed state everywhere (F1,F3,F5,F11)
-- `materialize`/`pull_snapshot`/`clone_workspace`: build lock entries and member
-  responses from re-read `head`/`status` (the pull pattern), not `target_lock`.
-- `snapshot`/`tag`: thread a backend, verify live state per Q3.
-- `status`: derive `MemberStatus`/`aggregate_status` from observed dirty/diverged;
-  extend `lock_match` to branch/detached/upstream and stop reporting `Matches` for
-  a dirty member.
+| ID | Sev | Finding | File:line | WS |
+| --- | --- | --- | --- | --- |
+| F0 | P0 ✓committed | FF moved ref before checkout (incident) — fixed `79d23c7` | git/mod.rs | WS0 (done) |
+| F1 | P1 | `materialize`/`pull_snapshot` write lock+response from **planned** target, never re-observe worktree | workspace_ops:594-616 | WS4 |
+| F2 | P1 | `materialize`/`init` **partial mutation** — members mutate, first `outcome?` aborts before lock write; stale lock / orphan clones; no recovery | workspace_ops:562-616, 316-406 | WS3,WS5 |
+| F3 | P1 | `snapshot`/`tag` capture **stale lock**, not live worktree (no backend) | workspace_ops:421-437, 465-479 | WS4 |
+| F4 | ~~P1~~ → AD2 | `.gitignore` not resynced on materialize/pull/clone | workspace_ops:504,631,681 | **superseded by AD2** |
+| F5 | P1 | `status` reports `Ok`/`aggregate::Ok` for a **dirty/diverged** member | status:312, 630-643 | WS4 |
+| F6 | P1 | `pull --head` does **not reject dirty post-FF** state before writing the lock | workspace_ops:787 | WS3 |
+| F7 | P1 | `push` has **no preflight-before-mutation** → partial remote advance under default atomic | workspace_ops:855-911, 1899, 2010 | WS3 |
+| F8 | P1 | `--sync fetch-only` (and merge/rebase/reset) **accepted but ignored** by core | cli:570,1983; workspace_ops:775-787 | WS6 |
+| F9 | P1 | CLI `--json`/`--jsonl` **error path** prints plain stderr, not structured output | cli:194-209, 1019 | WS7 |
+| F10 | ~~P2~~ → Q1 | `pull --head` fetches during preflight, advancing remote-tracking refs | workspace_ops:1710 | **superseded by Q1** |
+| F11 | P2 | `lock_match` ignores branch/detached/upstream; `Matches` for a dirty member | status:556 | WS4 |
+| F12 | P2 | `write_atomic` not crash-durable (no fsync) + fixed `{name}.tmp` race | artifact:335-343, 381-387 | WS8 |
+| F13 | P2 | `snapshot` lacks the duplicate-ID guard `tag` has | workspace_ops:414-446 vs 458 | WS8 |
+| F14 | P2 | manifest→lock→gitignore writes **not semantically atomic** | workspace_ops:134,141,227,403-406 | WS8 |
+| F15 | P2 | Generic runtime `aggregate_status` has **no `Partial`**; top-level errors drop `member_id`/`member_path` | operation:768,834 | WS5 |
+| F16 | P2 | Human `status --no-files` can **hide dirty** state | cli:1063,1238; status:326 | WS7 |
+| F17 | P2 | `status` models renames but rename detection not enabled/tested | git/mod.rs:253 | WS9 |
+| **F18** | **P1** | **operation code mutates the Git index via `git2`** — `stage_workspace_git_metadata` opens `git2::Repository`, `add_all`, `index.write()`, violating `GWZGitBackendDecision`'s "operation code MUST NOT expose git2" | workspace_ops:2229-2240 | **WS-backend** |
 
-### WS5 — Partial-success & recovery modeling (F2,F7,F15)
-- Add `AggregateStatus::Partial` to the generic runtime aggregation; preserve
-  per-member error identity (no anonymous top-level errors).
-- Define and write the `.gwz/recovery/<op>.yml` metadata (Q6) on partial mutation.
+## 4. Remediation Workstreams
 
-### WS6 — Policy enforcement (F8,F10)
-- Core honors the sync modes (Q4): `fetch-only` performs no branch/worktree
-  mutation; unimplemented modes reject loudly.
-- `--force` materialize per Q5 (overwrite-but-end-clean).
+Test-first per `AGENTS.md`; ~≤500 LOC net per step.
 
-### WS7 — CLI machine-output & human safety (F9,F16)
-- `--json`/`--jsonl`: emit a structured terminal error record (aggregate failure
-  + error code + `member_id`/`member_path` when known) on the error path.
-- `status --no-files`: still print dirty counts/summary; surface the aggregate.
+- **WS0 — baseline.** *Done* (`79d23c7`).
+- **WS-decide — the §2 decisions** (AD1/AD2/Q1–Q6, paper). Blocking for everything
+  below.
+- **WS-api — define the semantic backend API**, including the **root
+  metadata/boundary staging** primitive (the one F18 needs and AD2 boundary tests
+  exercise). This is where AD1's contract shape is written down.
+- **WS-contract — real-Git backend contract suite** (RED first). Disposable real
+  repos prove each mutating primitive matches porcelain — what would have caught
+  the incident: add/delete/rename/nested-file FF; dirty-target rejection;
+  interrupted-checkout; `fetch-only` leaves `HEAD`/worktree unchanged; primitive
+  self-verifies final state; root/member boundary under real `git status`/`add .`/
+  `clean -fd`/`checkout`/`pull`. Plus failure-injection, not only happy-path.
+- **WS-backend — implement F18** (and any AD1 primitives) behind `GitBackend`;
+  move root staging out of operation code; make WS-contract green. F18 is the first
+  concrete application of AD1, not a separate prerequisite.
+- **WS-split-cli — split `gwz-cli/src/main.rs`** (architecture-independent; may
+  proceed now). Acceptance gate in §5.
+- **WS-split-core — split `workspace_ops/mod.rs`** along operation seams, *after*
+  AD1/AD2 settle its helper modules.
+- **WS3 — the phased refactor** (Validate→Mutate→Observe→Record helper) onto the
+  now-split, contract-backed handlers:
+  - `pull --head`: `ls-remote` plan (Q1, removes F10); Validate all; after FF
+    **reject dirty observed state** (F6).
+  - `push`: Validate phase (remote/refspec) before any push; partial only under
+    explicit policy (F7, Q2).
+  - `materialize`/`init`: complete Validate for all before any clone/checkout; on
+    mid-batch failure, roll back this op's fresh clones or emit explicit partial
+    per Q6 (F2).
+- **WS4 — record observed state** (F1,F3,F5,F11): locks/responses from re-read
+  `head`/`status`; thread a backend into `snapshot`/`tag` (Q3); derive
+  `MemberStatus`/`aggregate_status` from dirty/diverged; extend `lock_match` to
+  branch/detached/upstream.
+- **WS5 — partial/recovery** (F2,F7,F15): `AggregateStatus::Partial` + per-member
+  error identity; recovery metadata **only per the Q6 schema decision** (or reject
+  partial until designed).
+- **WS6 — policy enforcement** (F8): core honors the sync modes (Q4); `--force`
+  per Q5.
+- **WS7 — CLI safety** (F9,F16): structured `--json`/`--jsonl` error records;
+  `status --no-files` still shows dirty counts + aggregate.
+- **WS8 — artifact hardening** (F12,F13,F14, and the AD2 boundary mechanism that
+  replaces F4): snapshot duplicate-ID guard; semantic manifest+lock atomicity;
+  `write_atomic` fsync + unique temp; advisory workspace lock.
+- **WS9 — rename decision** (F17): enable + test rename detection, or document it
+  off.
 
-### WS8 — Artifact hardening (F4,F12,F13,F14)
-- `snapshot` duplicate-ID guard (parity with `tag`).
-- Resync `.gitignore` at the end of `materialize`/`pull_snapshot`/`clone_workspace`.
-- Semantic manifest+lock atomicity: write lock-first or roll back the manifest on
-  lock-write failure.
-- `write_atomic`: `sync_all` + parent-dir fsync; unique temp name
-  (`{name}.{pid}.{nonce}.tmp`); consider an advisory workspace lock.
+## 5. Test Plan
 
-### WS9 — Tree-shape test matrix & rename decision (F17, §5)
-Fill the matrix below across backend + workspace + CLI; decide whether rename
-detection is enabled (then test it) or explicitly unsupported (document it).
-
-## 5. Test Matrix (acceptance checklist)
-
-Merged from both reviews. Each row should be covered at the backend layer and,
-where it changes user-visible state, at the workspace + CLI layer.
+### Tree-shape / behavior matrix (acceptance checklist)
 
 | Scenario | Now | Required |
 | --- | --- | --- |
 | Existing-file modification | baseline | keep |
-| Added top-level file (FF/pull) | missing | add |
-| Added nested file | backend-only (dirty WT) | extend to workspace + CLI |
-| Deleted tracked file | missing | add backend/workspace/CLI |
-| Renamed tracked file (incl. nested) | missing | add, or document rename-detection-off |
+| Added top-level / nested file (FF/pull) | partial | backend + workspace + CLI |
+| Deleted / renamed tracked file (incl. nested) | missing | add, or document rename-off |
 | Checkout/FF returns Ok but dirty | missing | fake-backend reject + lock unchanged |
-| Dirty-target rejection (untracked/nested/delete/rename forms) | partial | extend |
-| Post-op clean status + lock `dirty:false` | partial (backend) | assert across ops |
-| Partial multi-member failure (pull/materialize/push) | partial/inconsistent | two-member tests + recovery |
+| Primitive self-verifies final HEAD/index/worktree | missing | per AD1, contract test |
+| Dirty-target rejection (untracked/nested/delete/rename) | partial | extend |
+| Post-op clean status + lock `dirty:false` | partial | assert across ops |
+| Partial multi-member failure (pull/materialize/push) | inconsistent | two-member + recovery/partial per Q6 |
 | `--sync fetch-only` no local mutation | missing | add |
 | Structured JSON/JSONL error records | missing | add |
-| Duplicate snapshot ID rejected | missing | add (parity with tag) |
+| Duplicate snapshot ID rejected | missing | add |
+| **F18:** no production module outside `src/git/*` names `git2`; root staging is a backend op | missing | add (lint + contract) |
+| **AD2 boundary** under real `git status`/`add .`/`clean -fd`/`checkout` | missing | contract, for the chosen interim + final mode |
 
-## 6. Sequencing & The God-File Split
+### `main.rs` split acceptance gate
 
-- **WS0 first** (commit the FF fix) — the whole plan rests on it.
-- **Degodify before fixing (decided).** Split `workspace_ops/mod.rs` (4175 LOC)
-  and `gwz-cli/src/main.rs` (2746 LOC) as a **pure, byte-identical move** on
-  today's green code, *before* the behavioral audit fixes. Three reasons: (1) the
-  move is verifiable byte-identical-green now — the ideal condition for the split;
-  you forfeit that proof the moment behavior changes in the same pass; (2) the
-  seams are stable — the audit changes handler *internals* and adds a shared phase
-  helper, it does not move handlers between files, so an operation-seam split is
-  not re-cut (even if the handlers later collapse onto a generic driver, the
-  per-op files just thin out); (3) the delicate safety fixes are far safer to make
-  and review in <500-LOC modules than buried in a 4175-LOC file.
-- **Split by operation seam**, not line-cuts: pull / materialize / push /
-  create-add / snapshot-tag / a `common` for shared helpers (`resolved_member`,
-  gitignore sync, selection). `main.rs` splits independently (CLI vs core audit
-  are decoupled).
-- **Then** WS1 (policy) + WS2 (red tests) → WS3–WS9 behavioral fixes, each landing
-  in its now-small module. WS4–WS6 depend on WS1+WS3; WS7–WS9 are largely
-  independent.
+The CLI split must be a **behavior-preserving move only** — it must not absorb
+audit fixes or output changes:
+- no behavior changes; CLI unit + integration tests green; output golden tests
+  unchanged; no policy-parsing changes; **no drive-by JSON/JSONL error-path
+  changes** (that is WS7, gated by Q1/AD-nothing — keep it separate).
 
-Order: **WS0 → degodify split (workspace_ops + main.rs, gate green) → WS1 + WS2 →
-WS3–WS9.** (Mixing a pure move with a behavioral change forfeits the
-byte-identical proof that makes the split safe — so split, then fix.)
+## 6. Sequencing
 
-## 7. Reconciliation Notes (how the two reviews combined)
+1. **WS0** — commit the FF fix. *(done, `79d23c7`)*
+2. **WS-split-cli** — split `main.rs` now (architecture-independent), under the §5
+   acceptance gate. Keeps the degodify moving without waiting on the decisions.
+3. **WS-decide** — AD1 / AD2 / Q1–Q6 (paper). Blocking for everything core-side.
+4. **WS-api** — define the semantic backend API incl. root metadata/boundary
+   staging.
+5. **WS-contract** — write the real-Git contract tests **RED** against that API.
+6. **WS-backend (F18)** — implement the primitives behind `GitBackend`; make the
+   contract suite **green**.
+7. **WS-split-core** — split `workspace_ops` along the now architecture-stable
+   seams.
+8. **WS3 → WS9** — phased ops + behavioral fixes in the now-small modules.
 
-- **Agreed (high confidence):** materialize writes planned-not-observed (F1);
-  materialize/init partial mutation (F2); snapshot/tag stale (F3); status can read
-  Ok over a dirty member (F5); write_atomic durability/race (F12); manifest+lock
-  non-atomic (F14).
-- **Unique to Response48:** init orphan-clones block retry (F2 detail); `.gitignore`
-  not resynced on materialize (F4); `lock_match` ignores branch/detached (F11).
-- **Unique to Response55:** fetch-during-preflight (F10); dirty-post-FF not
-  rejected (F6); push no-preflight under atomic (F7); `--sync fetch-only` ignored
-  (F8); CLI JSON/JSONL error path (F9); snapshot duplicate-ID (F13); generic
-  aggregation lacks `Partial` (F15); `status --no-files` hides dirty (F16); rename
-  detection (F17).
-- **Revised after cross-checking Response55:** Response48 had rated `push` and the
-  CLI JSON output as clean. Verified against the code: `push` has no
-  preflight-before-mutation pass (F7) and the CLI error path is unstructured (F9).
-  Both are upheld as real and incorporated. Response48's narrower P0→P1 framing of
-  the materialize/lock issues is retained (no remaining silent-corruption P0 once
-  the FF fix lands), but the policy/preflight findings raise the *aggregate* risk:
-  several default-atomic operations can mutate before the selection is proven safe.
-- **Net:** no remaining P0 (after WS0), but a coherent cluster of P1 preflight/
-  observability defects that the WS3 phased refactor resolves at the root.
+Why this order: contract tests are written RED against the *intended* backend API
+(step 5), then F18 implements that API and turns them green (step 6) — so
+"contract tests before F18" is deliberate, not a contradiction. The
+`workspace_ops` split waits on AD1/AD2 because those reshape its helper modules;
+`main.rs` does not, so it goes first. (Earlier drafts said "split everything
+first"; that held for the *behavioral* fixes but wrongly assumed the
+backend/boundary architecture was settled — it is now a §2 decision.)
+
+## 7. Review History & Dispositions
+
+- **Audit consolidation** (Response48 + Response55): agreed on F1/F2/F3/F5/F12/F14;
+  Response48 unique — init orphan-clones (F2), F4, F11; Response55 unique — F6, F7,
+  F8, F9, F10, F13, F15, F16, F17. On cross-check, Response48's "push clean" and
+  "CLI JSON clean" were wrong (→ F7, F9). Net: no remaining P0 after WS0.
+- **Review-55 R1** (review of this plan): accepted — no-git-internals as a blocking
+  gate (AD1), `.gitignore`-is-a-design-question (AD2), gitlink-as-boundary spike,
+  direct `git2` in `workspace_ops` (F18), fetch-is-mutation (Q1 recast), recovery
+  needs a schema (Q6), real-Git contract tests (WS-contract). Pushed back on
+  porcelain-only-by-fiat → AD1 "prove, don't presume."
+- **Review-55 R2** (second review): accepted — the addendum left two competing
+  plans, so §11 is now folded into the body (this rewrite); F18 added to the
+  register + matrix + a workstream; AD1 contract sharpened (self-verify, failure-
+  injection, forbidden-ops, per-primitive CLI fallback); gitlink kept firmly a
+  spike with a workflow matrix + the committed/index-only/rejected question; Q6
+  recast as a schema question; sequencing clarified (RED contract tests → F18 →
+  green); `main.rs` split acceptance gate added; stale starting-state / F0 fixed
+  (committed at `79d23c7`).

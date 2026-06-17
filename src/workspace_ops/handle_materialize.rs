@@ -164,6 +164,13 @@ where
         .unwrap_or(0);
     let emitter = EventEmitter::new(&context, events, progress_interval);
     emitter.operation_started();
+    // F2: the fresh clones this op will create — rolled back on any mid-batch
+    // failure (Q6 reject-partial) so no orphan repos are left behind.
+    let fresh_clone_paths: Vec<_> = plans
+        .iter()
+        .filter(|plan| plan.clone_url.is_some())
+        .map(|plan| root.join(&plan.state.path))
+        .collect();
     let outcomes = par_map_per_host(
         plans,
         resolve_jobs(
@@ -204,10 +211,28 @@ where
         },
     );
     let mut responses = Vec::with_capacity(outcomes.len());
+    let mut first_error = None;
     for outcome in outcomes {
-        responses.push(outcome?);
+        match outcome {
+            Ok(response) => responses.push(response),
+            Err(error) => {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
     }
     emitter.operation_finished();
+
+    if let Some(error) = first_error {
+        // F2/Q6 reject-partial: a member failed mid-batch. Roll back this op's
+        // fresh clones so no orphan repos remain, and write no (stale) lock —
+        // failed = nothing changed for the clones this op created.
+        for path in &fresh_clone_paths {
+            let _ = std::fs::remove_dir_all(path);
+        }
+        return Err(error);
+    }
 
     if rewrite_lock {
         let mut lock = read_lock_or_empty(&root, &manifest.workspace.id)?;

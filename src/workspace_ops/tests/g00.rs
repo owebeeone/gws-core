@@ -102,6 +102,57 @@ use super::*;
     }
 
     #[test]
+    pub(crate) fn init_rolls_back_fresh_clones_on_mid_batch_failure() {
+        let temp = TempDir::new("init-rollback");
+        let backend = Git2Backend::new();
+        let fixture = RemoteFixture::new("init-rollback-source");
+        fixture.commit_and_push("README.md", "one", "initial", &backend);
+        let bad_url = temp.path().join("does-not-exist.git");
+
+        let result = handle_init_from_sources(
+            &backend,
+            temp.path(),
+            crate::InitFromSourcesRequest {
+                meta: request_meta(),
+                workspace_root: temp.path().to_string_lossy().into_owned(),
+                sources: vec![
+                    crate::SourceUrl {
+                        url: fixture.remote_url().to_owned(),
+                        path: Some("app".to_owned()),
+                        remote_name: None,
+                        branch: None,
+                    },
+                    crate::SourceUrl {
+                        url: bad_url.to_string_lossy().into_owned(),
+                        path: Some("lib".to_owned()),
+                        remote_name: None,
+                        branch: None,
+                    },
+                ],
+                target: None,
+                workspace_id: Some("ws_ops".to_owned()),
+            },
+            "op_init",
+            &NullSink,
+        );
+
+        assert!(result.is_err(), "init must fail when a source fails to clone");
+        // F2/Q6 reject-partial: the successful clone is rolled back; no lock written.
+        assert!(
+            !temp.path().join("app").exists(),
+            "fresh clone app must be rolled back"
+        );
+        assert!(
+            !temp.path().join("lib").exists(),
+            "fresh clone lib must be rolled back"
+        );
+        assert!(
+            !temp.path().join("gwz.conf/gwz.lock.yml").is_file(),
+            "no lock written on failed init"
+        );
+    }
+
+    #[test]
     pub(crate) fn materialize_lock_clones_missing_member_and_checks_out_recorded_commit() {
         let temp = TempDir::new("materialize-clone");
         let backend = Git2Backend::new();
@@ -338,6 +389,44 @@ use super::*;
             &[],
         )
         .unwrap();
+    }
+
+    #[test]
+    pub(crate) fn materialize_rolls_back_fresh_clones_on_mid_batch_failure() {
+        let temp = TempDir::new("materialize-rollback");
+        let backend = Git2Backend::new();
+        handle_create_workspace(create_workspace_request(temp.path()), "op_create").unwrap();
+        let fixture = RemoteFixture::new("rollback-source");
+        let commit = fixture.commit_and_push("README.md", "one", "initial", &backend);
+        let bad_oid = "0".repeat(40);
+        // app clones + checks out cleanly; lib clones then fails to check out a
+        // commit that does not exist -> a mid-batch failure.
+        write_pull_fixture(
+            temp.path(),
+            vec![
+                ("mem_app", "repos/app", fixture.remote_url(), &commit),
+                ("mem_lib", "repos/lib", fixture.remote_url(), &bad_oid),
+            ],
+        );
+
+        let result = handle_materialize(
+            &backend,
+            temp.path(),
+            materialize_lock_request(false),
+            "op_materialize",
+            &NullSink,
+        );
+
+        assert!(result.is_err(), "materialize must fail when a member fails");
+        // F2/Q6 reject-partial: this op's fresh clones are rolled back — no orphans.
+        assert!(
+            !temp.path().join("repos/app").exists(),
+            "fresh clone repos/app must be rolled back"
+        );
+        assert!(
+            !temp.path().join("repos/lib").exists(),
+            "fresh clone repos/lib must be rolled back"
+        );
     }
 
     pub(crate) fn materialize_lock_request(dry_run: bool) -> crate::MaterializeRequest {

@@ -103,6 +103,12 @@ where
         .unwrap_or(0);
     let emitter = EventEmitter::new(&context, events, progress_interval);
     emitter.operation_started();
+    // F2: every init member is a fresh clone — rolled back on any mid-batch
+    // failure (Q6 reject-partial) so no orphan repos are left behind.
+    let fresh_clone_paths: Vec<_> = plans
+        .iter()
+        .map(|plan| root.join(plan.path.as_str()))
+        .collect();
     type InitOutcome = (
         ManifestMember,
         ResolvedMemberArtifact,
@@ -168,11 +174,29 @@ where
         },
     );
     let mut members = Vec::with_capacity(outcomes.len());
+    let mut first_error = None;
     for outcome in outcomes {
-        let (manifest_member, locked, response) = outcome?;
-        lock.members.insert(manifest_member.id.clone(), locked);
-        members.push(response);
-        manifest.members.push(manifest_member);
+        match outcome {
+            Ok((manifest_member, locked, response)) => {
+                lock.members.insert(manifest_member.id.clone(), locked);
+                members.push(response);
+                manifest.members.push(manifest_member);
+            }
+            Err(error) => {
+                if first_error.is_none() {
+                    first_error = Some(error);
+                }
+            }
+        }
+    }
+    if let Some(error) = first_error {
+        // F2/Q6 reject-partial: a source failed mid-batch. Roll back this op's
+        // fresh clones and write no manifest/lock — failed = nothing changed.
+        for path in &fresh_clone_paths {
+            let _ = std::fs::remove_dir_all(path);
+        }
+        emitter.operation_finished();
+        return Err(error);
     }
     artifact::write_manifest(&root, &manifest)?;
     lock.created_at = now_marker();

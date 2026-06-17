@@ -56,7 +56,7 @@ workstreams or on request.
 | --- | --- | --- |
 | AD1 ✅ | Mutating-Git strategy (revisits `GWZGitBackendDecision`) | **Ratified 2026-06-17.** libgit2 stays *behind a strict boundary*, each mutating primitive **contract-proven porcelain-grade** (detail below). Not "porcelain-only CLI" by fiat. |
 | AD2 ✅ | Root/member boundary model | **Ratified 2026-06-17.** `gwz.yml` stays authoritative for membership; `.git/info/exclude` is the interim boundary. **Gitlink buys no consistency over the yml-recorded SHA** (recorded ≠ live; pinned oid goes stale/unreachable; pointer only moves on an explicit root commit — relocates churn, doesn't remove it) — it is a cleaner *boundary marker*, not a sync mechanism → gitlink stays a **deferred spike**, not the destination; sync yml→git representation on demand. Not "resync `.gitignore`". |
-| AD3 ⬜ | Workspace model — enforce vs capture/restore | **Proposed (pending ratification).** gwz is a **developer-driven capture/restore tool, NOT an enforcer**: developers own their member repos and run arbitrary git directly; "out of sync" is the normal resting state, not an error. Two explicit, human-invoked directions — **capture** (worktree→record: `status`/`snapshot`/`tag` observe live state) and **restore** (record→worktree: `materialize`/`pull`); gwz never silently forces the lock onto a tree. Recasts Q3 (capture dirty, don't reject; carry lock state for unmaterialized) and reframes the materialize-detach UX. Detail + sub-questions below. |
+| AD3 ✅ | Workspace model — enforce vs capture/restore | **Ratified 2026-06-18** (capture built on it). gwz is a **developer-driven capture/restore tool, NOT an enforcer**: developers own their member repos and run arbitrary git directly; "out of sync" is the normal resting state, not an error. Two explicit, human-invoked directions — **capture** (worktree→record: `status`/`snapshot`/`tag`/`capture` observe live state) and **restore** (record→worktree: `materialize`/`pull`); gwz never silently forces the lock onto a tree. Recasts Q3. **Done:** (a) capture-dirty, (b) carry-lock-for-unmaterialized, (d) `gwz capture` verb (`14985fd`+`ffeee75`). **Open:** (c) materialize restore-onto-branch vs always-detach. Detail below. |
 | Q1 | Is `fetch` inside the atomic guarantee? | **Treat fetch as mutation.** Plan with non-mutating `ls-remote` (libgit2 `Remote::connect`+`list`); fetch only *after* the whole selection passes Validate; if a remote-tracking-ref advance persists after failure, report it as an explicit member outcome. (Removes F10; honors "failed = nothing changed". Does not force the CLI.) |
 | Q2 | Is `push` atomic by default? | Cross-remote atomicity is impossible. Default = **preflight all** (remote exists, refspec resolves, optional dry-run) **then push**; real partial only under explicit policy, reported `Partial` with per-member identity. |
 | Q3 | Do `snapshot`/`tag` capture the live worktree or the lock? | **Live observed** state (REQ-084 "current state") — done (F3 `60d034f`). **Recast by AD3:** *capture* dirty (record `commit=HEAD` + `dirty`, never reject) and *carry the lock state* for unmaterialized members (don't fail the snapshot). The earlier "reject dirty/unmaterialized" is withdrawn for capture ops. Never claim `lock_match: Matches` unverified. |
@@ -153,7 +153,13 @@ Sub-questions to ratify:
 AD3 is **upstream of** F5 (status dirty surfacing) and the Q3/Q4/Q5 worktree policies —
 ratify it before those. No code yet; the only near-term change it forces is (b).
 
-### `gwz capture` — proposed verb (AD3 sub-question d)
+### `gwz capture` — implemented (AD3 sub-question d)
+
+**Status: shipped** — gwz-core `14985fd` (protocol via `tautc` + `handle_capture` +
+AD3(b) `observed_member_map`), gwz-cli `ffeee75` (the `capture` verb). The open
+choices below resolved to: name = **`capture`**; **first-class op** (new
+`CaptureRequest`/`CaptureResponse`/`ActionKind::Capture` in `gwz.taut.py`, regenerated
+— byte-parity corpus green), not a snapshot flag.
 
 **Intent.** The everyday *capture* verb: observe the current worktrees and write the
 **lock** from them, mutating nothing. "I diverged on purpose — rebased / switched

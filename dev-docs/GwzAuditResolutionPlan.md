@@ -224,7 +224,7 @@ ratified (`a024907`); `ls_remote` added as the Q1 plan-before-fetch foundation
 | F5 | P1 ✓ | `status` aggregate now surfaces dirty — new `AggregateStatus::Dirty` (taut) returned when any member's `git_status.dirty`; exit 0, dirty is normal per AD3 `7e4d1df`+`50948ac`. (Lock-divergence already carried by `lock_match: Differs`; branch-vs-upstream divergence deferred.) | status_member.rs | WS4 ✓ |
 | F6 | P1 ✓ | Closed by existing mechanisms — preflight rejects dirty members before any FF (`DirtyMember`, tested by g06) and `fast_forward` self-verify (`f16f258`) makes a dirty-post-FF state unreachable for FF'd members. Local-only members are Noop (not pulled); recording their dirty state is a Q3 question, not F6. No code change. | pull_head_member_preflight.rs | WS3 ✓ |
 | F7 | P1 ✓ | `push` **preflights all members** (remote/refspec/materialization) before pushing any; rejects the batch if any invalid, no remote advanced `8ed50cb` (Q2) | push_member.rs | WS3 ✓ |
-| F8 | P1 | `--sync fetch-only` (and merge/rebase/reset) **accepted but ignored** by core | cli:570,1983; workspace_ops:775-787 | WS6 |
+| F8 | P1 ✓ | **all sync styles implemented** (S1–S6 `97319ee`..`98318da`): planner now routes `policy.sync` — fetch-only / ff-only / merge / rebase / reset — instead of always FF. Decision (Gianni): gwz is a faithful multi-repo fan-out of git, NOT an enforcer; refusing merge/rebase/reset is the hand-holding AD3 rejects. Backend primitives `merge_upstream`/`rebase_onto`/`reset_hard` (porcelain-parity, clean+conflict, self-verifying); conflicts surface as `MemberStatus::Conflicted`/`AggregateStatus::Conflicted` (exit 1), worktree left `--continue`-able; reset gated on `policy.destructive`; fetch-only allows dirty. | gitbackend.rs, pull_head_member_preflight.rs | WS6 ✓ |
 | F9 | P1 ✓ | top-level CLI errors render envelope-consistent JSON under `--json`/`--jsonl` (`CliError` carries the gwz-core code); human/porcelain unchanged on stderr `e4a43ce` (gwz-cli) | gwz-cli clirequest/globalargs | WS7 ✓ |
 | F10 | ~~P2~~ → Q1 | `pull --head` fetches during preflight, advancing remote-tracking refs | workspace_ops:1710 | **superseded by Q1** |
 | F11 | P2 | `lock_match` ignores branch/detached/upstream; `Matches` for a dirty member | status:556 | WS4 |
@@ -372,6 +372,8 @@ backend/boundary architecture was settled — it is now a §2 decision.)
   (`baf912a`); F1 materialize observed-state (`b5744d2`); F3 snapshot/tag observe live state
   (`60d034f` + cli `2f7ac72`). Full suite green (95 lib +
   16 integration), 0 warnings, clippy clean throughout. F6 closed by existing mechanisms (no code).
-  **The only open P1 is F8** (sync-mode policy, Q4 — `merge`/`rebase`/`reset` accepted-but-ignored;
-  honor `fetch-only`, reject the rest loudly, then implement `reset`→`rebase`/`merge`). F5/F9 done.
+  **All P1s are now done.** F8 (the last) is implemented in full (S1–S6, `97319ee`..`98318da`): the
+  decision flipped from "reject merge/rebase/reset" to **implement every sync style** — gwz is a faithful
+  multi-repo fan-out of git, not an enforcer (refusing developer operations is the hand-holding AD3 rejects).
+  Conflicts are an expected outcome (`Conflicted` status, `--continue`-able), not a failure. F5/F9 done.
   AD3 ratified + fully implemented (capture/restore, `gwz capture`, branch-restore). All P2s (F11–F17) remain.

@@ -33,26 +33,21 @@ pub fn handle_create_workspace(
     crate::model::WorkspaceId::parse_str(&workspace_id)?;
     ensure_workspace_git_repo(&root)?;
 
-    artifact::write_manifest(
-        &root,
-        &ManifestArtifact {
-            schema: artifact::WORKSPACE_SCHEMA.to_owned(),
-            workspace: WorkspaceHeader {
-                id: workspace_id.clone(),
-            },
-            members: Vec::new(),
+    let manifest = ManifestArtifact {
+        schema: artifact::WORKSPACE_SCHEMA.to_owned(),
+        workspace: WorkspaceHeader {
+            id: workspace_id.clone(),
         },
-    )?;
-    artifact::write_lock(
-        &root,
-        &LockArtifact {
-            schema: artifact::LOCK_SCHEMA.to_owned(),
-            workspace_id,
-            manifest_schema: artifact::WORKSPACE_SCHEMA.to_owned(),
-            created_at: now_marker(),
-            members: BTreeMap::new(),
-        },
-    )?;
+        members: Vec::new(),
+    };
+    let lock = LockArtifact {
+        schema: artifact::LOCK_SCHEMA.to_owned(),
+        workspace_id,
+        manifest_schema: artifact::WORKSPACE_SCHEMA.to_owned(),
+        created_at: now_marker(),
+        members: BTreeMap::new(),
+    };
+    artifact::write_manifest_and_lock(&root, &manifest, &lock)?;
     sync_workspace_git_metadata(&root, &[])?;
 
     Ok(crate::CreateWorkspaceResponse {
@@ -128,13 +123,11 @@ where
         .map(|member| MemberPath::parse(&member.path))
         .collect::<ModelResult<Vec<_>>>()?;
     validate_member_path_set(&paths)?;
-    artifact::write_manifest(&root, &manifest)?;
-
     let mut lock = read_lock_or_empty(&root, &manifest.workspace.id)?;
     let locked = resolved_member(&manifest_member, &head, &status);
     lock.members.insert(member_id.clone(), locked.clone());
     lock.created_at = now_marker();
-    artifact::write_lock(&root, &lock)?;
+    artifact::write_manifest_and_lock(&root, &manifest, &lock)?;
     sync_workspace_git_metadata(&root, &manifest.members)?;
 
     Ok(crate::CreateRepoResponse {
@@ -214,13 +207,11 @@ where
         .map(|member| MemberPath::parse(&member.path))
         .collect::<ModelResult<Vec<_>>>()?;
     validate_member_path_set(&paths)?;
-    artifact::write_manifest(&root, &manifest)?;
-
     let mut lock = read_lock_or_empty(&root, &manifest.workspace.id)?;
     let locked = resolved_member(&manifest_member, &head, &status);
     lock.members.insert(member_id.clone(), locked.clone());
     lock.created_at = now_marker();
-    artifact::write_lock(&root, &lock)?;
+    artifact::write_manifest_and_lock(&root, &manifest, &lock)?;
     sync_workspace_git_metadata(&root, &manifest.members)?;
 
     Ok(crate::AddExistingRepoResponse {

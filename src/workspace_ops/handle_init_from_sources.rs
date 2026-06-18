@@ -198,9 +198,8 @@ where
         emitter.operation_finished();
         return Err(error);
     }
-    artifact::write_manifest(&root, &manifest)?;
     lock.created_at = now_marker();
-    artifact::write_lock(&root, &lock)?;
+    artifact::write_manifest_and_lock(&root, &manifest, &lock)?;
     sync_workspace_git_metadata(&root, &manifest.members)?;
     emitter.operation_finished();
 

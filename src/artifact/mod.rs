@@ -333,24 +333,57 @@ pub fn write_tag(root: &Path, artifact: &TagArtifact) -> ModelResult<()> {
 }
 
 pub fn write_atomic(path: &Path, contents: impl AsRef<str>) -> ModelResult<()> {
+    let staged = stage_durably(path, contents.as_ref())?;
+    publish_staged(&staged, path)
+}
+
+/// F14: write the manifest and lock together. True cross-file atomicity isn't possible on
+/// a POSIX filesystem, so stage BOTH durably first, then publish back-to-back with the
+/// LOCK LAST. A crash can then leave at worst a stale lock (rebuildable from the manifest
+/// and git state), never a lock referencing a member the manifest doesn't have. This is
+/// the single seam for the consistency-critical pair so the safe ordering can't reverse.
+pub fn write_manifest_and_lock(
+    root: &Path,
+    manifest: &ManifestArtifact,
+    lock: &LockArtifact,
+) -> ModelResult<()> {
+    let manifest_path = root.join(WORKSPACE_MANIFEST);
+    let lock_path = root.join(LOCK_PATH);
+    let manifest_staged = stage_durably(&manifest_path, &manifest.to_yaml()?)?;
+    let lock_staged = stage_durably(&lock_path, &lock.to_yaml()?)?;
+    publish_staged(&manifest_staged, &manifest_path)?;
+    publish_staged(&lock_staged, &lock_path)?;
+    Ok(())
+}
+
+/// Write `contents` to a unique temp beside `path` and fsync it, returning the staged temp
+/// path. On success the bytes are durably on disk, ready for `publish_staged`.
+fn stage_durably(path: &Path, contents: &str) -> ModelResult<PathBuf> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(io_error)?;
     }
     let tmp_path = temp_path(path)?;
-    let durable_write = || -> ModelResult<()> {
-        fs::write(&tmp_path, contents.as_ref()).map_err(io_error)?;
-        // F12: fsync the bytes to disk before the rename publishes them, so a crash can
-        // never expose a half-written target — a reader sees the old file or the full new one.
+    let write = || -> ModelResult<()> {
+        fs::write(&tmp_path, contents).map_err(io_error)?;
+        // F12: fsync the bytes to disk before the rename publishes them.
         fs::File::open(&tmp_path)
             .and_then(|file| file.sync_all())
-            .map_err(io_error)?;
-        fs::rename(&tmp_path, path).map_err(io_error)
+            .map_err(io_error)
     };
-    if let Err(err) = durable_write() {
+    if let Err(err) = write() {
         let _ = fs::remove_file(&tmp_path);
         return Err(err);
     }
-    // Best-effort: fsync the directory so the rename entry itself survives a crash.
+    Ok(tmp_path)
+}
+
+/// Publish a staged temp to `path` (atomic rename) and best-effort fsync the directory so
+/// the rename entry itself survives a crash.
+fn publish_staged(tmp_path: &Path, path: &Path) -> ModelResult<()> {
+    if let Err(err) = fs::rename(tmp_path, path).map_err(io_error) {
+        let _ = fs::remove_file(tmp_path);
+        return Err(err);
+    }
     if let Some(parent) = path.parent()
         && let Ok(dir) = fs::File::open(parent)
     {
@@ -730,6 +763,27 @@ mod tests {
         write_atomic(&target, "second\n").unwrap();
         assert_eq!(fs::read_to_string(&target).unwrap(), "second\n");
 
+        let leftovers = fs::read_dir(temp.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains(".tmp"))
+            .collect::<Vec<_>>();
+        assert!(leftovers.is_empty(), "temp files left behind: {leftovers:?}");
+    }
+
+    #[test]
+    fn write_manifest_and_lock_publishes_both_consistently() {
+        // F14: the consistency-critical pair is published together (lock last), durably,
+        // leaving no temp litter.
+        let temp = TempDir::new("manifest-lock");
+        let manifest = sample_manifest();
+        let lock = sample_lock();
+
+        write_manifest_and_lock(temp.path(), &manifest, &lock).unwrap();
+
+        assert_eq!(read_manifest(temp.path()).unwrap(), manifest);
+        assert_eq!(read_lock(temp.path()).unwrap(), lock);
         let leftovers = fs::read_dir(temp.path())
             .unwrap()
             .filter_map(Result::ok)

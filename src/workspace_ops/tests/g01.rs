@@ -136,7 +136,10 @@ pub(crate) const TEST_COMMIT: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
             _path: &Path,
             _remote: &str,
         ) -> ModelResult<Vec<crate::git::GitRemoteRef>> {
-            Ok(Vec::new())
+            Ok(vec![crate::git::GitRemoteRef {
+                name: "refs/heads/main".to_owned(),
+                target: TEST_COMMIT.to_owned(),
+            }])
         }
 
         fn fast_forward(

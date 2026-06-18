@@ -337,8 +337,25 @@ pub fn write_atomic(path: &Path, contents: impl AsRef<str>) -> ModelResult<()> {
         fs::create_dir_all(parent).map_err(io_error)?;
     }
     let tmp_path = temp_path(path)?;
-    fs::write(&tmp_path, contents.as_ref()).map_err(io_error)?;
-    fs::rename(&tmp_path, path).map_err(io_error)?;
+    let durable_write = || -> ModelResult<()> {
+        fs::write(&tmp_path, contents.as_ref()).map_err(io_error)?;
+        // F12: fsync the bytes to disk before the rename publishes them, so a crash can
+        // never expose a half-written target — a reader sees the old file or the full new one.
+        fs::File::open(&tmp_path)
+            .and_then(|file| file.sync_all())
+            .map_err(io_error)?;
+        fs::rename(&tmp_path, path).map_err(io_error)
+    };
+    if let Err(err) = durable_write() {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(err);
+    }
+    // Best-effort: fsync the directory so the rename entry itself survives a crash.
+    if let Some(parent) = path.parent()
+        && let Ok(dir) = fs::File::open(parent)
+    {
+        let _ = dir.sync_all();
+    }
     Ok(())
 }
 
@@ -383,8 +400,14 @@ fn temp_path(path: &Path) -> ModelResult<PathBuf> {
         .file_name()
         .and_then(|name| name.to_str())
         .ok_or_else(|| invalid("atomic write target must have a file name"))?;
-    Ok(path.with_file_name(format!("{file_name}.tmp")))
+    // F12: a unique temp name per process + per call so concurrent writers (or a stale
+    // temp left by a crashed prior write) never collide; the rename publishes atomically.
+    let pid = std::process::id();
+    let seq = TEMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    Ok(path.with_file_name(format!("{file_name}.{pid}.{seq}.tmp")))
 }
+
+static TEMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn require_schema(actual: &str, expected: &str) -> ModelResult<()> {
     let expected_major =
@@ -693,6 +716,27 @@ mod tests {
             commit: Some("abc123".to_owned()),
             ..ResolvedMemberArtifact::default()
         }
+    }
+
+    #[test]
+    fn write_atomic_publishes_content_and_leaves_no_temp_file() {
+        // F12: the durable write lands the exact bytes and cleans up after itself — no
+        // fixed-name `.tmp` lingering to race a concurrent writer.
+        let temp = TempDir::new("write-atomic");
+        let target = temp.path().join("lock.yaml");
+
+        write_atomic(&target, "first\n").unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), "first\n");
+        write_atomic(&target, "second\n").unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), "second\n");
+
+        let leftovers = fs::read_dir(temp.path())
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains(".tmp"))
+            .collect::<Vec<_>>();
+        assert!(leftovers.is_empty(), "temp files left behind: {leftovers:?}");
     }
 
     struct TempDir {

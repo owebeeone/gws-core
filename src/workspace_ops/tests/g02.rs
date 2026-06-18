@@ -319,6 +319,28 @@ use super::*;
     }
 
     #[test]
+    pub(crate) fn snapshot_rejects_a_duplicate_id() {
+        // F13: snapshot must refuse to overwrite an existing snapshot id, like `tag` does.
+        let temp = TempDir::new("snapshot-dup");
+        let backend = Git2Backend::new();
+        handle_create_workspace(create_workspace_request(temp.path()), "op_create").unwrap();
+        handle_create_repo(
+            &backend,
+            temp.path(),
+            create_repo_request("repos/app", None, None),
+            "op_repo",
+        )
+        .unwrap();
+        let request = || crate::SnapshotRequest {
+            meta: request_meta_with_actor_selection("agent://tester", &["mem_app"]),
+            snapshot_id: "snap_dup".to_owned(),
+        };
+        handle_snapshot(&backend, temp.path(), request(), "op_snap1").unwrap();
+        let err = handle_snapshot(&backend, temp.path(), request(), "op_snap2").unwrap_err();
+        assert_eq!(err.code, ErrorCode::InvalidRequest);
+    }
+
+    #[test]
     pub(crate) fn snapshot_records_observed_dirty_state_not_stale_lock() {
         let temp = TempDir::new("snapshot-observe");
         let backend = Git2Backend::new();

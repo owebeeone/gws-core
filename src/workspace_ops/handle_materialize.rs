@@ -27,6 +27,14 @@ where
 {
     let context = OperationRequest::Snapshot(request.clone()).context(operation_id.into())?;
     let root = resolve_workspace_root(start, request.meta.workspace.as_ref())?;
+    // F13: reject a duplicate snapshot id up front, the same guard `tag` already has —
+    // never silently overwrite an existing snapshot.
+    if artifact::snapshot_path(&root, &request.snapshot_id).exists() {
+        return Err(ModelError::new(
+            ErrorCode::InvalidRequest,
+            format!("snapshot '{}' already exists", request.snapshot_id),
+        ));
+    }
     let manifest = artifact::read_manifest(&root)?;
     assert_workspace_id(&manifest, request.meta.workspace.as_ref())?;
     let lock = artifact::read_lock(&root)?;

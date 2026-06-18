@@ -370,7 +370,7 @@ fn read_to_string(path: PathBuf) -> ModelResult<String> {
     fs::read_to_string(path).map_err(io_error)
 }
 
-fn snapshot_path(root: &Path, snapshot_id: &str) -> PathBuf {
+pub(crate) fn snapshot_path(root: &Path, snapshot_id: &str) -> PathBuf {
     root.join(SNAPSHOT_DIR).join(format!("{snapshot_id}.yaml"))
 }
 

@@ -1167,7 +1167,7 @@ gwz init
 gwz init <url>...
   -> InitFromSourcesRequest
 
-gwz add <repo-path>
+gwz repo add <repo-path>
   -> AddExistingRepoRequest
 
 gwz repo create <member-path>

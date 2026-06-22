@@ -476,6 +476,26 @@ for isolated missing behavior, not the primary implementation.
 The backend boundary exists so backend choice stays an implementation detail
 rather than becoming public API behavior.
 
+## Root/Member Boundary
+
+Member repositories are nested git repos at `root/<member.path>`. The root repo
+treats each member as a single opaque unit (never recursing into its files) by
+projecting every materialized member as a **gitlink** — a `160000` index entry
+pointing at the member commit recorded in `gwz.lock.yml`.
+
+`gwz.yml` is authoritative for membership, the lock is the source of the oid, and
+the gitlink is an **index-only projection synced on demand**: refreshed from the
+lock after every lock write (`sync_workspace_boundary`), never committed implicitly.
+`.gitignore` is no longer used to hide members — gwz only ensures one static
+`/gwz.conf/.tmp/` line and never edits existing entries. The sole path that commits
+the projection into root history is the `gwz commit` verb, which refreshes gitlinks
+from the lock and commits members before the root so pinned oids are never stale.
+
+The `sync_gitlinks` backend primitive (AD1, self-verifying) reconciles the root
+index's gitlink entries to the desired set. See `GWZGitlinkPlan.md` for the full
+design and behavior matrix; this supersedes the AD2 "gitlink deferred" disposition
+in `history/GwzAuditResolutionPlan.md`.
+
 ## Operation Flow
 
 Every mutating selection-wide operation follows the same pipeline:

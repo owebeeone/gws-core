@@ -23,6 +23,7 @@ pub enum ActionKind {
     PullSnapshot,
     Push,
     Capture,
+    Commit,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -91,6 +92,7 @@ pub enum OperationRequest {
     PullSnapshot(crate::PullSnapshotRequest),
     Push(crate::PushRequest),
     Capture(crate::CaptureRequest),
+    Commit(crate::CommitRequest),
 }
 
 impl OperationRequest {
@@ -108,6 +110,7 @@ impl OperationRequest {
             Self::PullSnapshot(request) => (ActionKind::PullSnapshot, &request.meta),
             Self::Push(request) => (ActionKind::Push, &request.meta),
             Self::Capture(request) => (ActionKind::Capture, &request.meta),
+            Self::Commit(request) => (ActionKind::Commit, &request.meta),
         };
         OperationContext::from_meta(operation_id.into(), action, meta)
     }
@@ -476,6 +479,7 @@ impl From<ActionKind> for crate::ActionKind {
             ActionKind::PullSnapshot => Self::PullSnapshot,
             ActionKind::Push => Self::Push,
             ActionKind::Capture => Self::Capture,
+            ActionKind::Commit => Self::Commit,
         }
     }
 }

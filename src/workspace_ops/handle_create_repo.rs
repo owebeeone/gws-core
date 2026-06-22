@@ -48,7 +48,7 @@ pub fn handle_create_workspace(
         members: BTreeMap::new(),
     };
     artifact::write_manifest_and_lock(&root, &manifest, &lock)?;
-    sync_workspace_git_metadata(&root, &[])?;
+    sync_workspace_boundary(&Git2Backend::new(), &root, &lock)?;
 
     Ok(crate::CreateWorkspaceResponse {
         response: response_envelope(context, crate::AggregateStatus::Ok, Vec::new()),
@@ -128,7 +128,7 @@ where
     lock.members.insert(member_id.clone(), locked.clone());
     lock.created_at = now_marker();
     artifact::write_manifest_and_lock(&root, &manifest, &lock)?;
-    sync_workspace_git_metadata(&root, &manifest.members)?;
+    sync_workspace_boundary(backend, &root, &lock)?;
 
     Ok(crate::CreateRepoResponse {
         response: response_envelope(
@@ -212,7 +212,7 @@ where
     lock.members.insert(member_id.clone(), locked.clone());
     lock.created_at = now_marker();
     artifact::write_manifest_and_lock(&root, &manifest, &lock)?;
-    sync_workspace_git_metadata(&root, &manifest.members)?;
+    sync_workspace_boundary(backend, &root, &lock)?;
 
     Ok(crate::AddExistingRepoResponse {
         response: response_envelope(
@@ -472,11 +472,6 @@ pub(crate) fn ensure_workspace_git_repo(root: &Path) -> ModelResult<()> {
     } else {
         Git2Backend::new().create_repo(root).map(|_| ())
     }
-}
-
-pub(crate) fn sync_workspace_git_metadata(root: &Path, members: &[ManifestMember]) -> ModelResult<()> {
-    update_workspace_gitignore(root, members)?;
-    stage_workspace_git_metadata(root)
 }
 
 pub(crate) fn io_error(error: std::io::Error) -> ModelError {

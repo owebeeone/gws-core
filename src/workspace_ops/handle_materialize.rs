@@ -133,6 +133,7 @@ where
     }
     next.created_at = now_marker();
     artifact::write_lock(&root, &next)?;
+    sync_workspace_boundary(backend, &root, &next)?;
     Ok(crate::CaptureResponse {
         response: response_envelope(
             context,
@@ -321,6 +322,11 @@ where
         lock.created_at = now_marker();
         artifact::write_lock(&root, &lock)?;
     }
+
+    // §4.3: project the now-materialized members as gitlinks in the root index. Read the
+    // authoritative on-disk lock (rewritten above, or the existing one for a lock target).
+    let lock = artifact::read_lock(&root)?;
+    sync_workspace_boundary(backend, &root, &lock)?;
 
     Ok(crate::MaterializeResponse {
         response: response_envelope(context, crate::AggregateStatus::Ok, responses),

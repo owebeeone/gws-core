@@ -99,6 +99,7 @@ where
     }
     lock.created_at = now_marker();
     artifact::write_lock(&root, &lock)?;
+    sync_workspace_boundary(backend, &root, &lock)?;
     emitter.operation_finished();
 
     Ok(crate::PullHeadResponse {

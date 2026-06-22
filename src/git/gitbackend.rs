@@ -85,6 +85,22 @@ pub trait GitBackend {
     /// persisted with the requested files staged before returning success.
     /// Content parity with porcelain `git add` is proven by contract test.
     fn stage_paths(&self, path: &Path, pathspecs: &[&str]) -> ModelResult<GitStageResult>;
+    /// Reconcile the ROOT index's gitlink (`160000`) entries to exactly `desired`
+    /// (member path → commit oid hex). Add/update an entry per desired member, remove
+    /// any existing `160000` entry whose path is not in `desired`, and touch no other
+    /// index entry. Index-only — never commits, and the oid need not exist in the root
+    /// odb (it lives in the member's). Self-verifies every desired entry persisted with
+    /// mode `160000` and the requested oid, and that no stale gitlink remains, before
+    /// returning. Parity with `git update-index --cacheinfo 160000,<oid>,<path>` is
+    /// proven by contract test.
+    fn sync_gitlinks(&self, root: &Path, desired: &[(&str, &str)])
+        -> ModelResult<GitGitlinkResult>;
+    /// Commit staged changes (or, with `all`, stage tracked modifications first —
+    /// `git commit -a`) via the `git` CLI, so hooks, signing, and committer config are
+    /// honored (AD1 per-primitive CLI fallback — libgit2's commit bypasses all of them).
+    /// Returns the new commit oid. Self-verifies HEAD advanced to a new commit before
+    /// returning. The caller must ensure there is something to commit (no empty commits).
+    fn commit(&self, path: &Path, message: &str, all: bool) -> ModelResult<GitCommitResult>;
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -188,6 +204,20 @@ pub struct GitStageResult {
     /// Top-level *file* pathspecs confirmed present in the index by the self-verify
     /// pass. Directory pathspecs are staged but not counted here.
     pub staged: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitGitlinkResult {
+    /// Desired gitlink entries written (added or updated) into the index.
+    pub written: usize,
+    /// Stale gitlink entries removed — paths that were `160000` but no longer desired.
+    pub removed: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitCommitResult {
+    /// The new commit oid created by this commit.
+    pub commit: String,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -703,6 +733,100 @@ impl GitBackend for Git2Backend {
         Ok(GitStageResult { staged })
     }
 
+    fn sync_gitlinks(
+        &self,
+        root: &Path,
+        desired: &[(&str, &str)],
+    ) -> ModelResult<GitGitlinkResult> {
+        let repo = open_repo(root)?;
+        let mut index = repo.index().map_err(git_error)?;
+        let desired_paths: Vec<&str> = desired.iter().map(|(path, _)| *path).collect();
+
+        // Remove stale gitlinks: existing `160000` entries whose (utf8) path is no
+        // longer desired. Collect first — the index can't be mutated while iterated.
+        let stale: Vec<String> = index
+            .iter()
+            .filter(|entry| entry.mode == GITLINK_MODE)
+            .filter_map(|entry| std::str::from_utf8(&entry.path).ok().map(str::to_owned))
+            .filter(|path| !desired_paths.contains(&path.as_str()))
+            .collect();
+        for path in &stale {
+            index.remove_path(Path::new(path)).map_err(git_error)?;
+        }
+
+        // Add/update the desired gitlink entries. A direct index write, not `git add`:
+        // the oid comes from the lock and need not exist in the root's odb.
+        for (path, oid_hex) in desired {
+            let oid = git2::Oid::from_str(oid_hex).map_err(git_error)?;
+            index.add(&gitlink_entry(path, oid)).map_err(git_error)?;
+        }
+        index.write().map_err(git_error)?;
+
+        // AD1 self-verify: re-open so the index is read fresh; every desired entry must
+        // be a `160000` at the requested oid, and no stale gitlink may remain.
+        let verify = open_repo(root)?.index().map_err(git_error)?;
+        for (path, oid_hex) in desired {
+            let oid = git2::Oid::from_str(oid_hex).map_err(git_error)?;
+            let ok = verify
+                .get_path(Path::new(path), 0)
+                .is_some_and(|entry| entry.mode == GITLINK_MODE && entry.id == oid);
+            if !ok {
+                return Err(ModelError::new(
+                    ErrorCode::GitCommandFailed,
+                    format!("gitlink for '{path}' missing or wrong after write"),
+                ));
+            }
+        }
+        let stale_remains = verify
+            .iter()
+            .filter(|entry| entry.mode == GITLINK_MODE)
+            .filter_map(|entry| std::str::from_utf8(&entry.path).ok().map(str::to_owned))
+            .any(|path| !desired_paths.contains(&path.as_str()));
+        if stale_remains {
+            return Err(ModelError::new(
+                ErrorCode::GitCommandFailed,
+                "stale gitlink remained in the index after sync",
+            ));
+        }
+
+        Ok(GitGitlinkResult {
+            written: desired.len(),
+            removed: stale.len(),
+        })
+    }
+
+    fn commit(&self, path: &Path, message: &str, all: bool) -> ModelResult<GitCommitResult> {
+        // AD1 CLI fallback: run porcelain `git commit` so hooks / signing / committer
+        // config are honored (libgit2's commit honors none of them).
+        let before = self.head(path)?.commit;
+        let mut command = std::process::Command::new("git");
+        command.arg("-C").arg(path).arg("commit");
+        if all {
+            command.arg("-a");
+        }
+        command.arg("-m").arg(message);
+        let output = command.output().map_err(|err| {
+            ModelError::new(ErrorCode::GitCommandFailed, format!("failed to run git commit: {err}"))
+        })?;
+        if !output.status.success() {
+            return Err(ModelError::new(
+                ErrorCode::GitCommandFailed,
+                format!("git commit failed: {}", String::from_utf8_lossy(&output.stderr).trim()),
+            ));
+        }
+        // AD1 self-verify: HEAD advanced to a new commit (read fresh).
+        let after = self.head(path)?.commit.ok_or_else(|| {
+            ModelError::new(ErrorCode::GitCommandFailed, "HEAD is unborn after commit")
+        })?;
+        if Some(&after) == before.as_ref() {
+            return Err(ModelError::new(
+                ErrorCode::GitCommandFailed,
+                "git commit did not advance HEAD",
+            ));
+        }
+        Ok(GitCommitResult { commit: after })
+    }
+
     fn read_ref(&self, path: &Path, ref_spec: &str) -> ModelResult<Option<String>> {
         let repo = open_repo(path)?;
         match repo.revparse_single(ref_spec) {
@@ -730,6 +854,29 @@ impl GitBackend for Git2Backend {
 
 pub(crate) fn open_repo(path: &Path) -> ModelResult<git2::Repository> {
     git2::Repository::open(path).map_err(git_error)
+}
+
+/// libgit2 file mode for a gitlink — a commit entry / submodule boundary.
+pub(crate) const GITLINK_MODE: u32 = 0o160000;
+
+/// A fully-specified index entry for a gitlink at `path` pointing at `oid`. The stat
+/// fields are zeroed (a gitlink has no worktree file to stat); libgit2 fills the path's
+/// name length on write, so `flags: 0` is correct.
+pub(crate) fn gitlink_entry(path: &str, oid: git2::Oid) -> git2::IndexEntry {
+    git2::IndexEntry {
+        ctime: git2::IndexTime::new(0, 0),
+        mtime: git2::IndexTime::new(0, 0),
+        dev: 0,
+        ino: 0,
+        mode: GITLINK_MODE,
+        uid: 0,
+        gid: 0,
+        file_size: 0,
+        id: oid,
+        flags: 0,
+        flags_extended: 0,
+        path: path.as_bytes().to_vec(),
+    }
 }
 
 /// Conflicted paths in `index`, sorted and de-duplicated. A conflict carries up to

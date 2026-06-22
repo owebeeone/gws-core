@@ -8,5 +8,6 @@ mod g04;
 mod g05;
 mod g06;
 mod g07;
+mod g08;
 
 pub(crate) use g01::*;

@@ -73,7 +73,9 @@ use super::*;
         assert!(temp.path().join("gwz.conf/gwz.lock.yml").is_file());
         assert!(!temp.path().join("workspace").exists());
         let ignore = fs::read_to_string(temp.path().join(".gitignore")).unwrap();
-        assert!(ignore.contains("/remote/"));
+        // G3/G4: only the static tmp-ignore line — no member block is ever written.
+        assert!(ignore.contains("/gwz.conf/.tmp/"));
+        assert!(!ignore.contains("/remote/"));
         let root_status = backend.status(temp.path()).unwrap();
         assert_eq!(root_status.untracked, 0);
         assert!(

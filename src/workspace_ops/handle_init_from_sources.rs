@@ -200,7 +200,7 @@ where
     }
     lock.created_at = now_marker();
     artifact::write_manifest_and_lock(&root, &manifest, &lock)?;
-    sync_workspace_git_metadata(&root, &manifest.members)?;
+    sync_workspace_boundary(backend, &root, &lock)?;
     emitter.operation_finished();
 
     Ok(crate::InitFromSourcesResponse {

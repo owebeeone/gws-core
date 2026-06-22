@@ -41,6 +41,10 @@ SCHEMA = schema(
         method("capture", role="in",
                params=Params(request=Ref.CaptureRequest),
                out=Ref.CaptureResponse),
+        # Commit staged (or, with all, tracked-modified) changes across members + root.
+        method("commit", role="in",
+               params=Params(request=Ref.CommitRequest),
+               out=Ref.CommitResponse),
         # Fetch and fast-forward to upstream heads.
         method("pull_head", role="in",
                params=Params(request=Ref.PullHeadRequest),
@@ -76,7 +80,8 @@ SCHEMA = schema(
          pull_head=8,
          pull_snapshot=9,
          push=10,
-         capture=11),
+         capture=11,
+         commit=12),
 
     # Source backing a workspace member.
     SourceKind=Enum(
@@ -669,6 +674,14 @@ SCHEMA = schema(
     CaptureRequest=Msg(
         meta=F(1, Ref.RequestMeta)),
 
+    # Commit staged (or, with all, tracked-modified) changes across members + root.
+    CommitRequest=Msg(
+        meta=F(1, Ref.RequestMeta),
+        # Commit message applied to every committed repo.
+        message=F(2, STR),
+        # Stage tracked modifications first (git commit -a).
+        all=F(3, BOOL, optional=True)),
+
     # Fetch and fast-forward selected members to their upstream heads.
     PullHeadRequest=Msg(
         meta=F(1, Ref.RequestMeta)),
@@ -714,6 +727,9 @@ SCHEMA = schema(
         response=F(1, Ref.ResponseEnvelope)),
     # Response wrapper for capture.
     CaptureResponse=Msg(
+        response=F(1, Ref.ResponseEnvelope)),
+    # Response wrapper for commit.
+    CommitResponse=Msg(
         response=F(1, Ref.ResponseEnvelope)),
     # Response wrapper for pull_head.
     PullHeadResponse=Msg(

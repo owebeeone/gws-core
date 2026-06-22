@@ -110,6 +110,28 @@ pub(crate) const TEST_COMMIT: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
             Ok(crate::git::GitStageResult { staged: 0 })
         }
 
+        fn sync_gitlinks(
+            &self,
+            _root: &Path,
+            desired: &[(&str, &str)],
+        ) -> ModelResult<crate::git::GitGitlinkResult> {
+            Ok(crate::git::GitGitlinkResult {
+                written: desired.len(),
+                removed: 0,
+            })
+        }
+
+        fn commit(
+            &self,
+            _path: &Path,
+            _message: &str,
+            _all: bool,
+        ) -> ModelResult<crate::git::GitCommitResult> {
+            Ok(crate::git::GitCommitResult {
+                commit: TEST_COMMIT.to_owned(),
+            })
+        }
+
         fn create_repo(&self, path: &Path) -> ModelResult<crate::git::GitCreateResult> {
             Ok(crate::git::GitCreateResult {
                 path: path.to_path_buf(),

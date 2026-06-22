@@ -16,6 +16,7 @@ pub enum ActionKind {
     PullSnapshot,
     Push,
     Capture,
+    Commit,
 }
 impl ActionKind {
     pub fn wire(self) -> i64 { match self {
@@ -31,6 +32,7 @@ impl ActionKind {
         Self::PullSnapshot => 9,
         Self::Push => 10,
         Self::Capture => 11,
+        Self::Commit => 12,
     } }
     pub fn from_wire(v: i64) -> Self { match v {
         0 => Self::CreateWorkspace,
@@ -45,6 +47,7 @@ impl ActionKind {
         9 => Self::PullSnapshot,
         10 => Self::Push,
         11 => Self::Capture,
+        12 => Self::Commit,
         _ => panic!("bad ActionKind wire value {}", v),
     } }
 }
@@ -1703,6 +1706,29 @@ impl CaptureRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
+pub struct CommitRequest {
+    pub meta: RequestMeta,
+    pub message: String,
+    pub all: Option<bool>,
+}
+impl CommitRequest {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, self.meta.to_cbor()),
+            (2, Cbor::Text(self.message.clone())),
+            (3, match &self.all { Some(v) => Cbor::Bool(*v), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            meta: RequestMeta::from_cbor(c.get(1)),
+            message: c.get(2).text(),
+            all: { let v = c.get(3); if v.is_null() { None } else { Some(v.boolean()) } },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct PullHeadRequest {
     pub meta: RequestMeta,
 }
@@ -1906,6 +1932,23 @@ pub struct CaptureResponse {
     pub response: ResponseEnvelope,
 }
 impl CaptureResponse {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, self.response.to_cbor()),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            response: ResponseEnvelope::from_cbor(c.get(1)),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct CommitResponse {
+    pub response: ResponseEnvelope,
+}
+impl CommitResponse {
     pub fn to_cbor(&self) -> Cbor {
         Cbor::Map(vec![
             (1, self.response.to_cbor()),

@@ -45,6 +45,10 @@ SCHEMA = schema(
         method("commit", role="in",
                params=Params(request=Ref.CommitRequest),
                out=Ref.CommitResponse),
+        # Stage pathspecs in the owning member/root repos (multi-repo git add).
+        method("stage", role="in",
+               params=Params(request=Ref.StageRequest),
+               out=Ref.StageResponse),
         # Fetch and fast-forward to upstream heads.
         method("pull_head", role="in",
                params=Params(request=Ref.PullHeadRequest),
@@ -81,7 +85,8 @@ SCHEMA = schema(
          pull_snapshot=9,
          push=10,
          capture=11,
-         commit=12),
+         commit=12,
+         stage=13),
 
     # Source backing a workspace member.
     SourceKind=Enum(
@@ -682,6 +687,16 @@ SCHEMA = schema(
         # Stage tracked modifications first (git commit -a).
         all=F(3, BOOL, optional=True)),
 
+    # Stage pathspecs across the owning member/root repos (multi-repo git add).
+    StageRequest=Msg(
+        meta=F(1, Ref.RequestMeta),
+        # Absolute working directory the pathspecs are resolved against (git cwd).
+        cwd=F(2, STR),
+        # Pathspecs to stage; resolved cwd-relative, then routed to the owning repo.
+        pathspecs=F(3, List(STR)),
+        # Stage everything across every repo (git add -A), ignoring pathspecs.
+        all=F(4, BOOL, optional=True)),
+
     # Fetch and fast-forward selected members to their upstream heads.
     PullHeadRequest=Msg(
         meta=F(1, Ref.RequestMeta)),
@@ -730,6 +745,9 @@ SCHEMA = schema(
         response=F(1, Ref.ResponseEnvelope)),
     # Response wrapper for commit.
     CommitResponse=Msg(
+        response=F(1, Ref.ResponseEnvelope)),
+    # Response wrapper for stage.
+    StageResponse=Msg(
         response=F(1, Ref.ResponseEnvelope)),
     # Response wrapper for pull_head.
     PullHeadResponse=Msg(

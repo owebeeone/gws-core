@@ -8,14 +8,18 @@ use super::*;
 
 // WS6: `gwz commit` fans out git commit across members + root (root last).
 
-fn set_identity(repo: &Path) {
+pub(crate) fn set_identity(repo: &Path) {
     let repo = git2::Repository::open(repo).unwrap();
     let mut cfg = repo.config().unwrap();
     cfg.set_str("user.name", "GWZ Test").unwrap();
     cfg.set_str("user.email", "gwz@example.invalid").unwrap();
 }
 
-fn init_one_member_workspace(temp: &Path, backend: &Git2Backend, source: &str) -> RemoteFixture {
+pub(crate) fn init_one_member_workspace(
+    temp: &Path,
+    backend: &Git2Backend,
+    source: &str,
+) -> RemoteFixture {
     let fixture = RemoteFixture::new(source);
     fixture.commit_and_push("README.md", "one", "initial", backend);
     let events = CollectingSink::default();

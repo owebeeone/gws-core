@@ -17,6 +17,7 @@ pub enum ActionKind {
     Push,
     Capture,
     Commit,
+    Stage,
 }
 impl ActionKind {
     pub fn wire(self) -> i64 { match self {
@@ -33,6 +34,7 @@ impl ActionKind {
         Self::Push => 10,
         Self::Capture => 11,
         Self::Commit => 12,
+        Self::Stage => 13,
     } }
     pub fn from_wire(v: i64) -> Self { match v {
         0 => Self::CreateWorkspace,
@@ -48,6 +50,7 @@ impl ActionKind {
         10 => Self::Push,
         11 => Self::Capture,
         12 => Self::Commit,
+        13 => Self::Stage,
         _ => panic!("bad ActionKind wire value {}", v),
     } }
 }
@@ -1729,6 +1732,32 @@ impl CommitRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
+pub struct StageRequest {
+    pub meta: RequestMeta,
+    pub cwd: String,
+    pub pathspecs: Vec<String>,
+    pub all: Option<bool>,
+}
+impl StageRequest {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, self.meta.to_cbor()),
+            (2, Cbor::Text(self.cwd.clone())),
+            (3, Cbor::Array(self.pathspecs.iter().map(|x| Cbor::Text(x.clone())).collect())),
+            (4, match &self.all { Some(v) => Cbor::Bool(*v), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            meta: RequestMeta::from_cbor(c.get(1)),
+            cwd: c.get(2).text(),
+            pathspecs: c.get(3).array().iter().map(|x| x.text()).collect(),
+            all: { let v = c.get(4); if v.is_null() { None } else { Some(v.boolean()) } },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct PullHeadRequest {
     pub meta: RequestMeta,
 }
@@ -1949,6 +1978,23 @@ pub struct CommitResponse {
     pub response: ResponseEnvelope,
 }
 impl CommitResponse {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, self.response.to_cbor()),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            response: ResponseEnvelope::from_cbor(c.get(1)),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct StageResponse {
+    pub response: ResponseEnvelope,
+}
+impl StageResponse {
     pub fn to_cbor(&self) -> Cbor {
         Cbor::Map(vec![
             (1, self.response.to_cbor()),

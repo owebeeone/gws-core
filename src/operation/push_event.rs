@@ -24,6 +24,7 @@ pub enum ActionKind {
     Push,
     Capture,
     Commit,
+    Stage,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -93,6 +94,7 @@ pub enum OperationRequest {
     Push(crate::PushRequest),
     Capture(crate::CaptureRequest),
     Commit(crate::CommitRequest),
+    Stage(crate::StageRequest),
 }
 
 impl OperationRequest {
@@ -111,6 +113,7 @@ impl OperationRequest {
             Self::Push(request) => (ActionKind::Push, &request.meta),
             Self::Capture(request) => (ActionKind::Capture, &request.meta),
             Self::Commit(request) => (ActionKind::Commit, &request.meta),
+            Self::Stage(request) => (ActionKind::Stage, &request.meta),
         };
         OperationContext::from_meta(operation_id.into(), action, meta)
     }
@@ -480,6 +483,7 @@ impl From<ActionKind> for crate::ActionKind {
             ActionKind::Push => Self::Push,
             ActionKind::Capture => Self::Capture,
             ActionKind::Commit => Self::Commit,
+            ActionKind::Stage => Self::Stage,
         }
     }
 }

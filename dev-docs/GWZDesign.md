@@ -1173,6 +1173,12 @@ gwz repo add <repo-path>
 gwz repo create <member-path>
   -> CreateRepoRequest
 
+gwz add <pathspec>...
+  -> StageRequest
+
+gwz commit -m <message>
+  -> CommitRequest
+
 gwz materialize --lock
 gwz materialize --head
 gwz materialize --snapshot <name>

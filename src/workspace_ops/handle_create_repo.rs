@@ -233,7 +233,7 @@ where
     })
 }
 
-pub(crate) fn resolve_workspace_root(
+pub fn resolve_workspace_root(
     start: &Path,
     workspace: Option<&crate::WorkspaceRef>,
 ) -> ModelResult<PathBuf> {

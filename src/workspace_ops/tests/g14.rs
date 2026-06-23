@@ -12,9 +12,18 @@ fn members(paths: &[&str]) -> Vec<String> {
 }
 
 fn target(member: Option<&str>, specs: &[&str]) -> StageTarget {
+    make_target(member, specs, true)
+}
+
+fn fanout(member: Option<&str>, specs: &[&str]) -> StageTarget {
+    make_target(member, specs, false)
+}
+
+fn make_target(member: Option<&str>, specs: &[&str], explicit: bool) -> StageTarget {
     StageTarget {
         member_path: member.map(str::to_owned),
         pathspecs: specs.iter().map(|s| (*s).to_owned()).collect(),
+        explicit,
     }
 }
 
@@ -73,8 +82,8 @@ fn dot_at_workspace_root_spans_all_repos() {
         got,
         vec![
             target(None, &["."]),
-            target(Some("gwz-cli"), &["."]),
-            target(Some("gwz-core"), &["."]),
+            fanout(Some("gwz-cli"), &["."]),
+            fanout(Some("gwz-core"), &["."]),
         ]
     );
 }
@@ -91,9 +100,9 @@ fn all_flag_targets_root_and_every_member() {
     assert_eq!(
         got,
         vec![
-            target(None, &["."]),
-            target(Some("gwz-cli"), &["."]),
-            target(Some("gwz-core"), &["."]),
+            fanout(None, &["."]),
+            fanout(Some("gwz-cli"), &["."]),
+            fanout(Some("gwz-core"), &["."]),
         ]
     );
 }

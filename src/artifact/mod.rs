@@ -332,6 +332,34 @@ pub fn write_tag(root: &Path, artifact: &TagArtifact) -> ModelResult<()> {
     write_atomic(&tag_path(root, &artifact.tag), artifact.to_yaml()?)
 }
 
+/// All snapshots in the workspace, sorted by file name. A missing dir is an empty list.
+pub fn list_snapshots(root: &Path) -> ModelResult<Vec<SnapshotArtifact>> {
+    list_artifacts(root.join(SNAPSHOT_DIR), SnapshotArtifact::from_yaml)
+}
+
+/// All tags in the workspace, sorted by file name. A missing dir is an empty list.
+pub fn list_tags(root: &Path) -> ModelResult<Vec<TagArtifact>> {
+    list_artifacts(root.join(TAG_DIR), TagArtifact::from_yaml)
+}
+
+/// Read + parse every `*.yaml` in `dir`, path-sorted. A missing dir yields an empty list.
+fn list_artifacts<T>(dir: PathBuf, parse: impl Fn(&str) -> ModelResult<T>) -> ModelResult<Vec<T>> {
+    let mut paths: Vec<PathBuf> = match fs::read_dir(&dir) {
+        Ok(read) => read
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("yaml"))
+            .collect(),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(io_error(error)),
+    };
+    paths.sort();
+    paths
+        .into_iter()
+        .map(|path| read_to_string(path).and_then(|yaml| parse(&yaml)))
+        .collect()
+}
+
 pub fn write_atomic(path: &Path, contents: impl AsRef<str>) -> ModelResult<()> {
     let staged = stage_durably(path, contents.as_ref())?;
     publish_staged(&staged, path)
@@ -425,7 +453,7 @@ pub(crate) fn snapshot_path(root: &Path, snapshot_id: &str) -> PathBuf {
 }
 
 fn tag_path(root: &Path, tag: &str) -> PathBuf {
-    root.join(TAG_DIR).join(format!("{tag}.yml"))
+    root.join(TAG_DIR).join(format!("{tag}.yaml"))
 }
 
 fn temp_path(path: &Path) -> ModelResult<PathBuf> {
@@ -650,6 +678,31 @@ mod tests {
             sample_snapshot()
         );
         assert_eq!(read_tag(temp.path(), "demo").unwrap(), sample_tag());
+
+        // Tags and snapshots share the .yaml suffix.
+        assert!(temp.path().join("gwz.conf/snapshots/snap_demo.yaml").is_file());
+        assert!(temp.path().join("gwz.conf/tags/demo.yaml").is_file());
+    }
+
+    #[test]
+    fn list_tags_and_snapshots_reads_sorted_entries() {
+        let temp = TempDir::new("artifact-list");
+        // No dir yet → empty, not an error.
+        assert!(list_tags(temp.path()).unwrap().is_empty());
+        assert!(list_snapshots(temp.path()).unwrap().is_empty());
+
+        write_tag(temp.path(), &sample_tag()).unwrap(); // "demo"
+        let mut alpha = sample_tag();
+        alpha.tag = "alpha".to_owned();
+        write_tag(temp.path(), &alpha).unwrap();
+        let tags = list_tags(temp.path()).unwrap();
+        assert_eq!(
+            tags.iter().map(|tag| tag.tag.as_str()).collect::<Vec<_>>(),
+            vec!["alpha", "demo"]
+        );
+
+        write_snapshot(temp.path(), &sample_snapshot()).unwrap();
+        assert_eq!(list_snapshots(temp.path()).unwrap().len(), 1);
     }
 
     #[test]

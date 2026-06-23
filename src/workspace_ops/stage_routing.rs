@@ -9,6 +9,10 @@ use crate::model::{ErrorCode, ModelError, ModelResult};
 pub(crate) struct StageTarget {
     pub member_path: Option<String>,
     pub pathspecs: Vec<String>,
+    /// `true` when a pathspec named this repo directly — an unmaterialized such target is an
+    /// error. `false` for fan-out targets reached via `.` / `-A` across member boundaries —
+    /// an unmaterialized fan-out target is silently skipped.
+    pub explicit: bool,
 }
 
 /// Route raw `gwz add` pathspecs to the repos that own them (GWZAddPlan §2). The workspace
@@ -16,9 +20,8 @@ pub(crate) struct StageTarget {
 /// it. Pathspecs are resolved cwd-relative (like `git add`), then mapped to that repo. A
 /// directory pathspec at/above member boundaries fans out into each contained member, so
 /// `gwz add .` at the root spans every repo (D2). `all` ignores pathspecs and targets the
-/// root repo plus every member. Pure — no filesystem access (works for not-yet-existing /
-/// deleted paths). Targets are returned root-first then by member path; pathspecs are
-/// sorted and de-duplicated.
+/// root repo plus every member (all fan-out). Pure — no filesystem access. Targets are
+/// returned root-first then by member path; pathspecs are sorted and de-duplicated.
 pub(crate) fn resolve_stage_targets(
     root: &Path,
     member_paths: &[String],
@@ -26,15 +29,13 @@ pub(crate) fn resolve_stage_targets(
     pathspecs: &[String],
     all: bool,
 ) -> ModelResult<Vec<StageTarget>> {
-    let mut groups: BTreeMap<Option<String>, BTreeSet<String>> = BTreeMap::new();
+    // member_path (None == root) -> (repo-relative pathspecs, explicit?)
+    let mut groups: BTreeMap<Option<String>, (BTreeSet<String>, bool)> = BTreeMap::new();
 
     if all {
-        groups.entry(None).or_default().insert(".".to_owned());
+        add(&mut groups, None, ".".to_owned(), false);
         for member in member_paths {
-            groups
-                .entry(Some(member.clone()))
-                .or_default()
-                .insert(".".to_owned());
+            add(&mut groups, Some(member.clone()), ".".to_owned(), false);
         }
         return Ok(into_targets(groups));
     }
@@ -63,26 +64,47 @@ pub(crate) fn resolve_stage_targets(
             .cloned();
 
         if let Some(member) = owner {
+            // The pathspec names this member directly → explicit.
             let inner = rel.strip_prefix(&member).unwrap_or(rel);
-            let spec = pathspec_str(inner);
-            groups.entry(Some(member)).or_default().insert(spec);
+            add(&mut groups, Some(member), pathspec_str(inner), true);
         } else {
-            // Root-territory path: stage it in the root repo, and fan out into every
-            // member contained within this pathspec (D2 — members are excluded from the
-            // root, so a root-side `.` would never reach them).
-            groups.entry(None).or_default().insert(pathspec_str(rel));
+            // Root-territory path: stage it in the root repo (explicit), and fan out into
+            // every member contained within this pathspec (D2, fan-out — members are
+            // excluded from the root, so a root-side `.` would never reach them).
+            add(&mut groups, None, pathspec_str(rel), true);
             for member in member_paths {
                 if rel.as_os_str().is_empty() || Path::new(member).starts_with(rel) {
-                    groups
-                        .entry(Some(member.clone()))
-                        .or_default()
-                        .insert(".".to_owned());
+                    add(&mut groups, Some(member.clone()), ".".to_owned(), false);
                 }
             }
         }
     }
 
     Ok(into_targets(groups))
+}
+
+/// Merge a repo-relative pathspec into `groups`; a target is explicit if any contributing
+/// pathspec named it directly.
+fn add(
+    groups: &mut BTreeMap<Option<String>, (BTreeSet<String>, bool)>,
+    key: Option<String>,
+    spec: String,
+    explicit: bool,
+) {
+    let entry = groups.entry(key).or_insert_with(|| (BTreeSet::new(), false));
+    entry.0.insert(spec);
+    entry.1 |= explicit;
+}
+
+fn into_targets(groups: BTreeMap<Option<String>, (BTreeSet<String>, bool)>) -> Vec<StageTarget> {
+    groups
+        .into_iter()
+        .map(|(member_path, (pathspecs, explicit))| StageTarget {
+            member_path,
+            pathspecs: pathspecs.into_iter().collect(),
+            explicit,
+        })
+        .collect()
 }
 
 fn join_cwd(cwd: &Path, spec: &str) -> PathBuf {
@@ -118,14 +140,4 @@ fn pathspec_str(rel: &Path) -> String {
         return ".".to_owned();
     }
     rel.to_string_lossy().replace('\\', "/")
-}
-
-fn into_targets(groups: BTreeMap<Option<String>, BTreeSet<String>>) -> Vec<StageTarget> {
-    groups
-        .into_iter()
-        .map(|(member_path, pathspecs)| StageTarget {
-            member_path,
-            pathspecs: pathspecs.into_iter().collect(),
-        })
-        .collect()
 }

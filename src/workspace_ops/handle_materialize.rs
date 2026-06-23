@@ -75,7 +75,7 @@ where
     let root = resolve_workspace_root(start, request.meta.workspace.as_ref())?;
     let tag_path = root
         .join(artifact::TAG_DIR)
-        .join(format!("{}.yml", request.tag_name));
+        .join(format!("{}.yaml", request.tag_name));
     if tag_path.exists() {
         return Err(ModelError::new(
             ErrorCode::TagInvalid,
@@ -554,7 +554,7 @@ pub(crate) fn materialize_target_members(
                 .ok_or_else(|| invalid("tag target requires a name"))?;
             if !root
                 .join(artifact::TAG_DIR)
-                .join(format!("{name}.yml"))
+                .join(format!("{name}.yaml"))
                 .exists()
             {
                 return Err(ModelError::new(ErrorCode::TagNotFound, "tag not found"));

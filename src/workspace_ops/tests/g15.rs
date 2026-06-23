@@ -109,3 +109,58 @@ fn pathspec_outside_workspace_errors() {
     .unwrap_err();
     assert_eq!(err.code, crate::model::ErrorCode::PathEscape);
 }
+
+#[test]
+fn all_with_member_selection_scopes_to_selected_member() {
+    let temp = TempDir::new("stage-all-select");
+    let backend = Git2Backend::new();
+    let _fixture = init_one_member_workspace(temp.path(), &backend, "stage-all-select-source");
+    let member_root = temp.path().join("remote");
+    fs::write(member_root.join("a.txt"), "x\n").unwrap();
+    fs::write(temp.path().join("root.txt"), "y\n").unwrap();
+
+    let member_id = crate::artifact::read_manifest(temp.path()).unwrap().members[0]
+        .id
+        .clone();
+    let request = crate::StageRequest {
+        meta: request_meta_with_actor_selection("agent_test", &[member_id.as_str()]),
+        cwd: temp.path().to_string_lossy().into_owned(),
+        pathspecs: Vec::new(),
+        all: Some(true),
+    };
+    handle_stage(&backend, temp.path(), request, "op_stage").unwrap();
+
+    assert!(staged(&backend, &member_root, "a.txt"), "selected member staged");
+    assert!(!staged(&backend, temp.path(), "root.txt"), "root NOT staged when scoped to a member");
+}
+
+#[test]
+fn dot_skips_unmaterialized_member_but_stages_root() {
+    let temp = TempDir::new("stage-skip");
+    let backend = Git2Backend::new();
+    let _fixture = init_one_member_workspace(temp.path(), &backend, "stage-skip-source");
+    // Un-materialize the member: drop its .git so it is no longer a repo.
+    fs::remove_dir_all(temp.path().join("remote/.git")).unwrap();
+    fs::write(temp.path().join("root.txt"), "y\n").unwrap();
+
+    // `gwz add .` reaches the member only by fan-out → it is skipped, not an error.
+    handle_stage(&backend, temp.path(), stage_request(temp.path(), &["."], false), "op_stage").unwrap();
+    assert!(staged(&backend, temp.path(), "root.txt"), "root still staged");
+}
+
+#[test]
+fn explicit_pathspec_into_unmaterialized_member_errors() {
+    let temp = TempDir::new("stage-explicit-err");
+    let backend = Git2Backend::new();
+    let _fixture = init_one_member_workspace(temp.path(), &backend, "stage-explicit-err-source");
+    fs::remove_dir_all(temp.path().join("remote/.git")).unwrap();
+
+    let err = handle_stage(
+        &backend,
+        temp.path(),
+        stage_request(temp.path(), &["remote/x.txt"], false),
+        "op_stage",
+    )
+    .unwrap_err();
+    assert_eq!(err.code, crate::model::ErrorCode::MemberNotFound);
+}

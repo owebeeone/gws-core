@@ -1,4 +1,3 @@
-
 use crate::git::{Git2Backend, GitBackend};
 use crate::model::ErrorCode;
 use crate::operation::NullSink;

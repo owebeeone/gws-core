@@ -1,4 +1,3 @@
-
 use std::fs;
 
 use crate::artifact::read_lock;

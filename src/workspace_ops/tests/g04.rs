@@ -1,4 +1,3 @@
-
 use crate::artifact::read_lock;
 use crate::git::Git2Backend;
 

@@ -1,4 +1,3 @@
-
 use std::path::Path;
 
 use crate::git::{Git2Backend, GitBackend};

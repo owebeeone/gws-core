@@ -1,12 +1,14 @@
 //! Minimal deterministic CBOR — the Rust binding of the frozen wire substrate.
-//! Byte-for-byte identical to taut/src/taut/wire/cbor.py and trial/ts/src/cbor.ts:
-//! the same tiny subset (int, bytes, text, array, int-keyed map, bool, null) in
-//! core deterministic encoding (definite length, shortest-form ints, ascending
-//! map keys). Hand-rolled, zero dependencies.
+//! Byte-for-byte identical to taut/src/taut/wire/cbor.py and
+//! src/taut/gen/runtime/typescript/cbor.ts:
+//! the same tiny subset (int, bytes, text, array, int-keyed map, bool, null,
+//! float) in core deterministic encoding (definite length, shortest-form ints,
+//! shortest-form floats, ascending map keys). Hand-rolled, zero dependencies.
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Cbor {
     Int(i64),
+    Float(f64),
     Bytes(Vec<u8>),
     Text(String),
     Array(Vec<Cbor>),
@@ -28,19 +30,46 @@ impl Cbor {
         panic!("no map key {}", key);
     }
     pub fn int(&self) -> i64 {
-        if let Cbor::Int(n) = self { *n } else { panic!("not an int") }
+        if let Cbor::Int(n) = self {
+            *n
+        } else {
+            panic!("not an int")
+        }
+    }
+    pub fn float(&self) -> f64 {
+        if let Cbor::Float(x) = self {
+            *x
+        } else {
+            panic!("not a float")
+        }
     }
     pub fn text(&self) -> String {
-        if let Cbor::Text(s) = self { s.clone() } else { panic!("not text") }
+        if let Cbor::Text(s) = self {
+            s.clone()
+        } else {
+            panic!("not text")
+        }
     }
     pub fn bytes(&self) -> Vec<u8> {
-        if let Cbor::Bytes(b) = self { b.clone() } else { panic!("not bytes") }
+        if let Cbor::Bytes(b) = self {
+            b.clone()
+        } else {
+            panic!("not bytes")
+        }
     }
     pub fn boolean(&self) -> bool {
-        if let Cbor::Bool(b) = self { *b } else { panic!("not a bool") }
+        if let Cbor::Bool(b) = self {
+            *b
+        } else {
+            panic!("not a bool")
+        }
     }
     pub fn array(&self) -> &[Cbor] {
-        if let Cbor::Array(a) = self { a } else { panic!("not an array") }
+        if let Cbor::Array(a) = self {
+            a
+        } else {
+            panic!("not an array")
+        }
     }
     pub fn is_null(&self) -> bool {
         matches!(self, Cbor::Null)
@@ -48,7 +77,11 @@ impl Cbor {
     /// All (key, value) pairs of a map (empty if not a map). Used to capture
     /// forward-compat residual: tags the schema doesn't name.
     pub fn map_entries(&self) -> &[(i64, Cbor)] {
-        if let Cbor::Map(m) = self { m } else { &[] }
+        if let Cbor::Map(m) = self {
+            m
+        } else {
+            &[]
+        }
     }
 }
 
@@ -71,6 +104,121 @@ fn head(out: &mut Vec<u8>, major: u8, n: u64) {
     }
 }
 
+fn round_shift_right(value: u128, shift: u32) -> u128 {
+    if shift == 0 {
+        return value;
+    }
+    if shift >= 128 {
+        return 0;
+    }
+    let quotient = value >> shift;
+    let remainder = value & ((1u128 << shift) - 1);
+    let halfway = 1u128 << (shift - 1);
+    if remainder > halfway || (remainder == halfway && (quotient & 1) == 1) {
+        quotient + 1
+    } else {
+        quotient
+    }
+}
+
+fn f64_to_f16_bits(value: f64) -> Option<u16> {
+    let bits = value.to_bits();
+    let sign = ((bits >> 48) & 0x8000) as u16;
+    let exp = ((bits >> 52) & 0x7ff) as i32;
+    let frac = bits & 0x000f_ffff_ffff_ffff;
+
+    if exp == 0x7ff {
+        return Some(if frac == 0 { sign | 0x7c00 } else { 0x7e00 });
+    }
+    if exp == 0 {
+        return Some(sign);
+    }
+
+    let e = exp - 1023;
+    let mant = (1u128 << 52) | frac as u128;
+    if e < -14 {
+        let sub = round_shift_right(mant, (28 - e) as u32);
+        if sub == 0 {
+            return Some(sign);
+        }
+        if sub >= 0x400 {
+            return Some(sign | 0x0400);
+        }
+        return Some(sign | sub as u16);
+    }
+    if e > 15 {
+        return None;
+    }
+
+    let mut half_exp = e + 15;
+    let mut sig = round_shift_right(mant, 42);
+    if sig == 0x800 {
+        half_exp += 1;
+        sig = 0x400;
+        if half_exp >= 31 {
+            return None;
+        }
+    }
+    Some(sign | ((half_exp as u16) << 10) | (sig as u16 - 0x400))
+}
+
+fn f16_bits_to_f64(bits: u16) -> f64 {
+    let sign = ((bits as u64 & 0x8000) << 48) != 0;
+    let exp = (bits >> 10) & 0x1f;
+    let frac = bits & 0x03ff;
+    match exp {
+        0 => {
+            if frac == 0 {
+                f64::from_bits(if sign { 1u64 << 63 } else { 0 })
+            } else {
+                let v = (frac as f64) * 2f64.powi(-24);
+                if sign {
+                    -v
+                } else {
+                    v
+                }
+            }
+        }
+        0x1f => {
+            if frac == 0 {
+                f64::from_bits((if sign { 1u64 << 63 } else { 0 }) | 0x7ff0_0000_0000_0000)
+            } else {
+                f64::NAN
+            }
+        }
+        _ => {
+            let v = (1.0 + (frac as f64) / 1024.0) * 2f64.powi(exp as i32 - 15);
+            if sign {
+                -v
+            } else {
+                v
+            }
+        }
+    }
+}
+
+fn enc_float(value: f64, out: &mut Vec<u8>) {
+    if value.is_nan() {
+        out.extend_from_slice(&[0xf9, 0x7e, 0x00]);
+        return;
+    }
+    if let Some(bits) = f64_to_f16_bits(value) {
+        if f16_bits_to_f64(bits).to_bits() == value.to_bits() {
+            out.push(0xf9);
+            out.extend_from_slice(&bits.to_be_bytes());
+            return;
+        }
+    }
+    let single = value as f32;
+    if (single as f64).to_bits() == value.to_bits() {
+        out.push(0xfa);
+        out.extend_from_slice(&single.to_bits().to_be_bytes());
+    } else {
+        out.push(0xfb);
+        out.extend_from_slice(&value.to_bits().to_be_bytes());
+    }
+}
+
 pub fn encode(v: &Cbor) -> Vec<u8> {
     let mut out = Vec::new();
     enc(v, &mut out);
@@ -86,6 +234,7 @@ fn enc(v: &Cbor, out: &mut Vec<u8>) {
                 head(out, 1, (-1 - *n) as u64);
             }
         }
+        Cbor::Float(x) => enc_float(*x, out),
         Cbor::Bytes(b) => {
             head(out, 2, b.len() as u64);
             out.extend_from_slice(b);
@@ -125,7 +274,10 @@ fn read_arg(data: &[u8], off: usize, info: u8) -> (u64, usize) {
     match info {
         n if n < 24 => (n as u64, off),
         24 => (data[off] as u64, off + 1),
-        25 => (u16::from_be_bytes([data[off], data[off + 1]]) as u64, off + 2),
+        25 => (
+            u16::from_be_bytes([data[off], data[off + 1]]) as u64,
+            off + 2,
+        ),
         26 => (
             u32::from_be_bytes([data[off], data[off + 1], data[off + 2], data[off + 3]]) as u64,
             off + 4,
@@ -161,7 +313,10 @@ fn dec(data: &[u8], off: usize) -> (Cbor, usize) {
         3 => {
             let (n, o) = read_arg(data, off, info);
             let n = n as usize;
-            (Cbor::Text(String::from_utf8(data[o..o + n].to_vec()).unwrap()), o + n)
+            (
+                Cbor::Text(String::from_utf8(data[o..o + n].to_vec()).unwrap()),
+                o + n,
+            )
         }
         4 => {
             let (n, mut o) = read_arg(data, off, info);
@@ -192,6 +347,20 @@ fn dec(data: &[u8], off: usize) -> (Cbor, usize) {
             20 => (Cbor::Bool(false), off),
             21 => (Cbor::Bool(true), off),
             22 => (Cbor::Null, off),
+            25 => {
+                let bits = u16::from_be_bytes([data[off], data[off + 1]]);
+                (Cbor::Float(f16_bits_to_f64(bits)), off + 2)
+            }
+            26 => {
+                let bits =
+                    u32::from_be_bytes([data[off], data[off + 1], data[off + 2], data[off + 3]]);
+                (Cbor::Float(f32::from_bits(bits) as f64), off + 4)
+            }
+            27 => {
+                let mut b = [0u8; 8];
+                b.copy_from_slice(&data[off..off + 8]);
+                (Cbor::Float(f64::from_bits(u64::from_be_bytes(b))), off + 8)
+            }
             _ => panic!("unsupported simple value {}", info),
         },
         _ => panic!("unsupported major type {}", major),

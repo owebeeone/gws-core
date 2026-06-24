@@ -1,5 +1,8 @@
 #[rustfmt::skip]
 #[path = "cbor.rs"]
+// taut-generated runtime; not held to clippy style (cf. `#[allow(clippy::redundant_closure)]`
+// on `pub mod generated`). The 0.6.0 float encoder uses a nested `if let { if .. }`.
+#[allow(clippy::collapsible_if)]
 pub mod cbor;
 
 pub mod artifact;

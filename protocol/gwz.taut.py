@@ -29,6 +29,10 @@ SCHEMA = schema(
         method("status", role="in",
                params=Params(request=Ref.StatusRequest),
                out=Ref.StatusResponse),
+        # List the workspace's members (id, path, materialized).
+        method("ls", role="in",
+               params=Params(request=Ref.LsRequest),
+               out=Ref.LsResponse),
         # Capture selected member state by snapshot id.
         method("snapshot", role="in",
                params=Params(request=Ref.SnapshotRequest),
@@ -86,7 +90,9 @@ SCHEMA = schema(
          push=10,
          capture=11,
          commit=12,
-         stage=13),
+         stage=13,
+         ls=14,
+         forall=15),
 
     # Operation kind for the `gwz tag` verb.
     TagOp=Enum(
@@ -95,6 +101,11 @@ SCHEMA = schema(
          fetch=2,
          push=3,
          delete=4),
+
+    # How `gwz forall` runs the command: direct argv, or via a shell.
+    ExecMode=Enum(
+         argv=0,
+         shell=1),
 
     # Source backing a workspace member.
     SourceKind=Enum(
@@ -672,6 +683,56 @@ SCHEMA = schema(
         include_branch_summary=F(4, BOOL, optional=True),
         # How file paths should be rendered in status projections.
         path_style=F(5, Ref.StatusPathStyle, optional=True)),
+
+    # List the workspace's members (read-only; manifest + lock, no git).
+    LsRequest=Msg(
+        meta=F(1, Ref.RequestMeta),
+        # Include configured-but-unmaterialized members.
+        include_unmaterialized=F(2, BOOL, optional=True)),
+
+    # One member in an `ls` listing. Reused by ExecRequest (forall).
+    MemberEntry=Msg(
+        # Member id (e.g. mem_app).
+        id=F(1, STR),
+        # Workspace-relative path (e.g. repos/app).
+        path=F(2, STR),
+        # Absolute path on this host.
+        abspath=F(3, STR),
+        # Whether the member is cloned/materialized on disk.
+        materialized=F(4, BOOL)),
+
+    LsResponse=Msg(
+        response=F(1, Ref.ResponseEnvelope),
+        members=F(2, List(Ref.MemberEntry), optional=True)),
+
+    # ---- gwz forall (CLI-local; gwz-core MUST NOT handle these) -----------------
+    # `gwz forall` runs a command in each selected member. These messages live here only because
+    # the taut module system (TautModules.md) isn't built yet — relocate to a gwz-cli-owned IR when
+    # it lands. There is NO gwz-core handler and no `service` method: gwz-core never executes
+    # commands; the gwz-cli executor dispatches them locally.
+    #
+    # Per-member process outcome. `exit_code` is absent for signal-killed processes (Unix, → signal);
+    # `spawn_error` records a failure before a process existed (missing binary, bad cwd).
+    ExecResult=Msg(
+        id=F(1, STR),
+        path=F(2, STR),
+        exit_code=F(3, INT, optional=True),
+        signal=F(4, INT, optional=True),
+        spawn_error=F(5, STR, optional=True)),
+
+    # Run a command across the given members.
+    ExecRequest=Msg(
+        meta=F(1, Ref.RequestMeta),
+        mode=F(2, Ref.ExecMode),
+        # argv (argv mode), or a single shell string (shell mode).
+        command=F(3, List(STR)),
+        members=F(4, List(Ref.MemberEntry)),
+        # Continue past a failing member (the `--partial` global); default stops.
+        continue_on_fail=F(5, BOOL, optional=True)),
+
+    ExecResponse=Msg(
+        response=F(1, Ref.ResponseEnvelope),
+        results=F(2, List(Ref.ExecResult), optional=True)),
 
     # Write a named snapshot for the selected members.
     SnapshotRequest=Msg(

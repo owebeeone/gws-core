@@ -1,8 +1,9 @@
 # GWZ Forall + Ls — `gwz ls` (list members) & `gwz forall` (run-in-each) (Plan)
 
-Status: **proposed** (2026-06-24) — design converged with Gianni; **revised after two reviews**
-(a codebase review + Codex Review55): the parse/execute split, envelope preservation, machine-output
-policy, process-result modelling, member identity, and the prior `gwz run` spec are addressed below.
+Status: **implemented** (2026-06-24) — both phases built, smoke-verified, green (gwz-core 163 lib,
+gwz-cli 60, clippy clean). Design converged with Gianni; revised after two reviews (parse/execute
+split, envelope preservation, machine-output policy, process modelling, member identity, prior
+`gwz run` spec). **As-built deltas** in the appendix.
 Owner: Gianni. `GWZDesign.md` stays authoritative; companion to `GWZTagPlan.md` / `GWZAddPlan.md`.
 
 ## 1. Goal & shape
@@ -221,6 +222,19 @@ in gwz-core. Decisions (Gianni, 2026-06-24):
 - abspath in a core message is **not novel** — `StageRequest.cwd` is already an absolute path on a
   live core request. The real remote concern is that a remote executor resolves its own paths
   (already noted), not abspath-in-protocol per se.
+
+## As-built deltas (implementation)
+- **Regen is blocked by a git tag.** `taut`'s version detector (`vcs_versioning`) chokes on the tag
+  `gwztag/tag-done-p4` (in gwz-core + gwz-dev), so regen needs `SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0`.
+  Removing/renaming that tag fixes it permanently — Gianni's call (it's a tag).
+- **`gwz ls` explicit-unmaterialized = filtered out (empty), not an error.** The plan said error, but
+  there's no fitting error code and `gwz status` *shows* unmaterialized members without erroring;
+  `--unmaterialized` is the single uniform toggle (the reviewer's "return empty" option).
+- **`gwz ls --json` = the members array** (listing JSON), with the real `LsResponse` envelope preserved
+  on the `CliResponse` so the exit code is honest — consistent with the tag/snapshot `--json` listings
+  rather than envelope-wrapped.
+- **`gwz forall` summary prints on failure only** (clean stdout when all succeed); banners on stderr;
+  the `--json`/`--jsonl` rejection makes the stdout/JSON-collision e2e moot (verified by smoke).
 
 ## Appendix — corrections applied from the codebase review
 - Member resolution + process spawning moved out of `command_request` (parse-only) into

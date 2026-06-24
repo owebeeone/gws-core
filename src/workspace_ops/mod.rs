@@ -1,6 +1,7 @@
 mod handle_commit;
 mod handle_create_repo;
 mod handle_init_from_sources;
+mod handle_ls;
 mod handle_materialize;
 mod handle_stage;
 mod handle_tag;
@@ -17,6 +18,7 @@ mod tests;
 pub use handle_commit::*;
 pub use handle_create_repo::*;
 pub use handle_init_from_sources::*;
+pub use handle_ls::*;
 pub use handle_materialize::*;
 pub use handle_stage::*;
 pub use handle_tag::*;

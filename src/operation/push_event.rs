@@ -25,6 +25,8 @@ pub enum ActionKind {
     Capture,
     Commit,
     Stage,
+    Ls,
+    Forall,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -95,6 +97,7 @@ pub enum OperationRequest {
     Capture(crate::CaptureRequest),
     Commit(crate::CommitRequest),
     Stage(crate::StageRequest),
+    Ls(crate::LsRequest),
 }
 
 impl OperationRequest {
@@ -114,6 +117,7 @@ impl OperationRequest {
             Self::Capture(request) => (ActionKind::Capture, &request.meta),
             Self::Commit(request) => (ActionKind::Commit, &request.meta),
             Self::Stage(request) => (ActionKind::Stage, &request.meta),
+            Self::Ls(request) => (ActionKind::Ls, &request.meta),
         };
         OperationContext::from_meta(operation_id.into(), action, meta)
     }
@@ -467,6 +471,32 @@ pub(crate) fn member_plan_to_protocol(member: &MemberPlan) -> crate::MemberRespo
     }
 }
 
+/// Build a standard `ResponseEnvelope` from request meta + an action. For **CLI-local** ops
+/// (e.g. `gwz forall`) that stamp their own envelope without a gwz-core handler — `gwz-core`
+/// itself never executes those, this just mints a consistent envelope.
+pub fn response_envelope_for(
+    meta: &crate::RequestMeta,
+    action: ActionKind,
+    operation_id: impl Into<String>,
+    aggregate_status: crate::AggregateStatus,
+    errors: Vec<crate::GwzError>,
+) -> model::ModelResult<crate::ResponseEnvelope> {
+    let context = OperationContext::from_meta(operation_id.into(), action, meta)?;
+    Ok(crate::ResponseEnvelope {
+        meta: crate::ResponseMeta {
+            request_id: context.request_id,
+            schema_version: context.schema_version,
+            action: action.into(),
+            aggregate_status,
+            operation_id: Some(context.operation_id),
+            message: None,
+            attribution: context.attribution.as_ref().map(Into::into),
+        },
+        members: Vec::new(),
+        errors,
+    })
+}
+
 impl From<ActionKind> for crate::ActionKind {
     fn from(value: ActionKind) -> Self {
         match value {
@@ -484,6 +514,8 @@ impl From<ActionKind> for crate::ActionKind {
             ActionKind::Capture => Self::Capture,
             ActionKind::Commit => Self::Commit,
             ActionKind::Stage => Self::Stage,
+            ActionKind::Ls => Self::Ls,
+            ActionKind::Forall => Self::Forall,
         }
     }
 }

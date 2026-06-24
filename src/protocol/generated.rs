@@ -18,6 +18,8 @@ pub enum ActionKind {
     Capture,
     Commit,
     Stage,
+    Ls,
+    Forall,
 }
 impl ActionKind {
     pub fn wire(self) -> i64 { match self {
@@ -35,6 +37,8 @@ impl ActionKind {
         Self::Capture => 11,
         Self::Commit => 12,
         Self::Stage => 13,
+        Self::Ls => 14,
+        Self::Forall => 15,
     } }
     pub fn from_wire(v: i64) -> Self { match v {
         0 => Self::CreateWorkspace,
@@ -51,6 +55,8 @@ impl ActionKind {
         11 => Self::Capture,
         12 => Self::Commit,
         13 => Self::Stage,
+        14 => Self::Ls,
+        15 => Self::Forall,
         _ => panic!("bad ActionKind wire value {}", v),
     } }
 }
@@ -78,6 +84,23 @@ impl TagOp {
         3 => Self::Push,
         4 => Self::Delete,
         _ => panic!("bad TagOp wire value {}", v),
+    } }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum ExecMode {
+    #[default] Argv,
+    Shell,
+}
+impl ExecMode {
+    pub fn wire(self) -> i64 { match self {
+        Self::Argv => 0,
+        Self::Shell => 1,
+    } }
+    pub fn from_wire(v: i64) -> Self { match v {
+        0 => Self::Argv,
+        1 => Self::Shell,
+        _ => panic!("bad ExecMode wire value {}", v),
     } }
 }
 
@@ -1673,6 +1696,150 @@ impl StatusRequest {
             include_file_changes: { let v = c.get(3); if v.is_null() { None } else { Some(v.boolean()) } },
             include_branch_summary: { let v = c.get(4); if v.is_null() { None } else { Some(v.boolean()) } },
             path_style: { let v = c.get(5); if v.is_null() { None } else { Some(StatusPathStyle::from_wire(v.int())) } },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct LsRequest {
+    pub meta: RequestMeta,
+    pub include_unmaterialized: Option<bool>,
+}
+impl LsRequest {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, self.meta.to_cbor()),
+            (2, match &self.include_unmaterialized { Some(v) => Cbor::Bool(*v), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            meta: RequestMeta::from_cbor(c.get(1)),
+            include_unmaterialized: { let v = c.get(2); if v.is_null() { None } else { Some(v.boolean()) } },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct MemberEntry {
+    pub id: String,
+    pub path: String,
+    pub abspath: String,
+    pub materialized: bool,
+}
+impl MemberEntry {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, Cbor::Text(self.id.clone())),
+            (2, Cbor::Text(self.path.clone())),
+            (3, Cbor::Text(self.abspath.clone())),
+            (4, Cbor::Bool(self.materialized)),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            id: c.get(1).text(),
+            path: c.get(2).text(),
+            abspath: c.get(3).text(),
+            materialized: c.get(4).boolean(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct LsResponse {
+    pub response: ResponseEnvelope,
+    pub members: Option<Vec<MemberEntry>>,
+}
+impl LsResponse {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, self.response.to_cbor()),
+            (2, match &self.members { Some(v) => Cbor::Array(v.iter().map(|x| x.to_cbor()).collect()), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            response: ResponseEnvelope::from_cbor(c.get(1)),
+            members: { let v = c.get(2); if v.is_null() { None } else { Some(v.array().iter().map(|x| MemberEntry::from_cbor(x)).collect()) } },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct ExecResult {
+    pub id: String,
+    pub path: String,
+    pub exit_code: Option<i64>,
+    pub signal: Option<i64>,
+    pub spawn_error: Option<String>,
+}
+impl ExecResult {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, Cbor::Text(self.id.clone())),
+            (2, Cbor::Text(self.path.clone())),
+            (3, match &self.exit_code { Some(v) => Cbor::Int(*v), None => Cbor::Null }),
+            (4, match &self.signal { Some(v) => Cbor::Int(*v), None => Cbor::Null }),
+            (5, match &self.spawn_error { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            id: c.get(1).text(),
+            path: c.get(2).text(),
+            exit_code: { let v = c.get(3); if v.is_null() { None } else { Some(v.int()) } },
+            signal: { let v = c.get(4); if v.is_null() { None } else { Some(v.int()) } },
+            spawn_error: { let v = c.get(5); if v.is_null() { None } else { Some(v.text()) } },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct ExecRequest {
+    pub meta: RequestMeta,
+    pub mode: ExecMode,
+    pub command: Vec<String>,
+    pub members: Vec<MemberEntry>,
+    pub continue_on_fail: Option<bool>,
+}
+impl ExecRequest {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, self.meta.to_cbor()),
+            (2, Cbor::Int(self.mode.wire())),
+            (3, Cbor::Array(self.command.iter().map(|x| Cbor::Text(x.clone())).collect())),
+            (4, Cbor::Array(self.members.iter().map(|x| x.to_cbor()).collect())),
+            (5, match &self.continue_on_fail { Some(v) => Cbor::Bool(*v), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            meta: RequestMeta::from_cbor(c.get(1)),
+            mode: ExecMode::from_wire(c.get(2).int()),
+            command: c.get(3).array().iter().map(|x| x.text()).collect(),
+            members: c.get(4).array().iter().map(|x| MemberEntry::from_cbor(x)).collect(),
+            continue_on_fail: { let v = c.get(5); if v.is_null() { None } else { Some(v.boolean()) } },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct ExecResponse {
+    pub response: ResponseEnvelope,
+    pub results: Option<Vec<ExecResult>>,
+}
+impl ExecResponse {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, self.response.to_cbor()),
+            (2, match &self.results { Some(v) => Cbor::Array(v.iter().map(|x| x.to_cbor()).collect()), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            response: ResponseEnvelope::from_cbor(c.get(1)),
+            results: { let v = c.get(2); if v.is_null() { None } else { Some(v.array().iter().map(|x| ExecResult::from_cbor(x)).collect()) } },
         }
     }
 }

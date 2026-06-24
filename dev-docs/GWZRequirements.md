@@ -85,10 +85,16 @@ GWZ Core v0 MUST support:
 - snapshot read and write
 - add existing Git repository
 - create local Git repository
+- list workspace members
+- stage file contents across the owning workspace/member repositories
+- commit staged or tracked modifications across selected Git repositories and
+  the workspace root
 - materialize to lock
 - materialize to head
+- materialize to tag
 - status
 - snapshot current selection
+- create, list, delete, fetch, and push Git tags for selected members
 - pull to snapshot
 - pull to head
 - push selected Git members
@@ -104,6 +110,7 @@ GWZ Core v0 MAY defer:
 - generated source materialization
 - selection-wide branch
 - selection-wide merge
+- coordinated stash bundles
 - file watching
 - bare repository, worktree, and mirror-cache storage backends
 

@@ -200,7 +200,7 @@ project errors in **execute**; `--json`/`--jsonl` is rejected.
   required — `run_forall` unit tests alone won't catch stdout/JSON collisions.
 
 ## Reconciliation with the existing `gwz run` spec (RESOLVED)
-`gwz-cli/dev-docs/GwzMemberGitSpec.md` §`gwz run` specs this escape hatch as `gwz run` with the runner
+`gwz-cli/dev-docs/history/GwzMemberGitSpec.md` §`gwz run` specs this escape hatch as `gwz run` with the runner
 in gwz-core. Decisions (Gianni, 2026-06-24):
 - **Name:** `gwz forall` **replaces** `gwz run` — the `gwz run` section of that spec is superseded.
 - **Executor:** CLI-only (gwz-core never executes), overriding the spec's in-core `GitCliRunner`.

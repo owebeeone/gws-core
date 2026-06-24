@@ -495,7 +495,7 @@ verb: it commits members first, re-locks from their new HEADs, then commits the 
 (`gwz.conf`) last — so the committed lock reflects the post-commit member state. This
 lands back on the original AD2 disposition (the lock SHA, not a gitlink, is the
 record); the earlier gitlink boundary was implemented then reverted — see
-`GWZGitlinkPlan.md` for that historical design.
+`history/GWZGitlinkPlan.md` for that historical design.
 
 ## Operation Flow
 
@@ -1153,9 +1153,12 @@ argv
   -> if accepted: render events until OperationResult
 ```
 
-The CLI should not call Git directly. It should not read or write workspace
-artifacts directly. All behavior goes through the same message path used by any
-future daemon, UI, or test harness.
+The CLI should not call Git directly for structured workspace operations. It
+should not read or write workspace artifacts directly. All structured behavior
+goes through the same message path used by any future daemon, UI, or test
+harness. The explicit `gwz forall` escape hatch is CLI-local command execution:
+it uses `LsRequest` to resolve members, then runs the user-supplied command in
+each selected member.
 
 Suggested v0 command mapping:
 
@@ -1171,6 +1174,9 @@ gwz repo add <repo-path>
 
 gwz repo create <member-path>
   -> CreateRepoRequest
+
+gwz ls
+  -> LsRequest
 
 gwz add <pathspec>...
   -> StageRequest
@@ -1201,6 +1207,9 @@ gwz push [--remote <name>] [--refspec <refspec>]
 
 gwz status
   -> StatusRequest
+
+gwz forall [projects...] -- <cmd>
+  -> CLI-local ExecRequest/ExecResponse; member resolution uses LsRequest
 ```
 
 Global CLI options should map to common message fields:

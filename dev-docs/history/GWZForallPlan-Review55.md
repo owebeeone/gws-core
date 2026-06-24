@@ -212,7 +212,7 @@ second is cleaner if more CLI-local operations are expected.
 ### P2: The plan conflicts with the existing `gwz run` design doc
 
 Reference: `dev-docs/history/GWZForallPlan.md:1-20`,
-`gwz-cli/dev-docs/GwzMemberGitSpec.md:170-239`
+`gwz-cli/dev-docs/history/GwzMemberGitSpec.md:170-239`
 
 `GwzMemberGitSpec.md` already describes this escape hatch as `gwz run`, with
 selection, `--jobs`, per-member exit codes, and shell execution. The new plan
@@ -224,7 +224,6 @@ Required plan change: add a naming/compatibility decision:
 - `forall` replaces the planned `run`;
 - `run` remains the canonical verb and `forall` is an alias;
 - or both exist with different semantics.
-whihc
 Also clarify how existing global `--jobs` and `--partial` apply. The plan says
 sequential and continue-through-all, while the older spec tied these to jobs and
 partial policy.

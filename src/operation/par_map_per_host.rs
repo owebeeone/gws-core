@@ -2,9 +2,6 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Condvar, Mutex};
 
-
-
-
 /// A counting semaphore over a fixed permit budget; used as the global ceiling.
 pub(crate) struct Semaphore {
     pub(crate) permits: Mutex<usize>,
@@ -117,4 +114,3 @@ where
         })
         .collect()
 }
-

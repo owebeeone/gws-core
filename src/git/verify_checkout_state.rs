@@ -3,7 +3,6 @@ use std::path::Path;
 
 use crate::model::{ErrorCode, ModelError, ModelResult};
 
-
 use super::*;
 
 pub(crate) fn find_remote<'repo>(
@@ -137,4 +136,3 @@ pub(crate) fn git_error(error: git2::Error) -> ModelError {
 pub(crate) fn io_error(error: std::io::Error) -> ModelError {
     ModelError::new(ErrorCode::IoError, error.to_string())
 }
-

@@ -16,4 +16,3 @@ pub(crate) fn normalize_path(path: &Path) -> PathBuf {
     }
     normalized
 }
-

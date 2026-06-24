@@ -31,9 +31,10 @@ where
     let all = request.all.unwrap_or(false);
     // A narrowing member selection (`--member` / `--member-path`) scopes `-A` to those
     // members only; bare `-A` (or `--all`) stages the root plus every member.
-    let narrowed = request.meta.selection.as_ref().is_some_and(|selection| {
-        !selection.member_ids.is_empty() || !selection.paths.is_empty()
-    });
+    let narrowed =
+        request.meta.selection.as_ref().is_some_and(|selection| {
+            !selection.member_ids.is_empty() || !selection.paths.is_empty()
+        });
 
     let targets = if all && narrowed {
         let lock = artifact::read_lock(&root)?;
@@ -46,7 +47,9 @@ where
                     .iter()
                     .find(|member| &member.id == member_id)
                     .map(|member| member.path.clone())
-                    .ok_or_else(|| ModelError::new(ErrorCode::MemberNotFound, "member not found"))?;
+                    .ok_or_else(|| {
+                        ModelError::new(ErrorCode::MemberNotFound, "member not found")
+                    })?;
                 Ok(StageTarget {
                     member_path: Some(path),
                     pathspecs: vec![".".to_owned()],

@@ -25,7 +25,10 @@ fn tag_create_lightweight_then_list_and_delete() {
     assert_eq!(backend.tag_list(&repo).unwrap(), vec!["v1".to_owned()]);
 
     backend.tag_delete(&repo, "v1").unwrap();
-    assert!(backend.tag_list(&repo).unwrap().is_empty(), "tag gone after delete");
+    assert!(
+        backend.tag_list(&repo).unwrap().is_empty(),
+        "tag gone after delete"
+    );
 }
 
 #[test]
@@ -92,7 +95,9 @@ fn tag_fetch_brings_remote_tags_local() {
     run_git(&repo_a, &["config", "user.name", "GWZ"]);
     run_git(&repo_a, &["config", "user.email", "gwz@example.invalid"]);
     commit_file(&repo_a, "f.txt", "x\n", "base", &[]).unwrap();
-    backend.add_remote(&repo_a, "origin", bare.to_str().unwrap()).unwrap();
+    backend
+        .add_remote(&repo_a, "origin", bare.to_str().unwrap())
+        .unwrap();
     backend
         .push(&repo_a, "origin", "refs/heads/main:refs/heads/main")
         .unwrap();
@@ -111,7 +116,10 @@ fn tag_fetch_brings_remote_tags_local() {
     // Repo B fetches it.
     backend.tag_fetch(&repo_b, "origin").unwrap();
     assert!(
-        backend.tag_list(&repo_b).unwrap().contains(&"v1".to_owned()),
+        backend
+            .tag_list(&repo_b)
+            .unwrap()
+            .contains(&"v1".to_owned()),
         "remote tag fetched into the local repo"
     );
 }

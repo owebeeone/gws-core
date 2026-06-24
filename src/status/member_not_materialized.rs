@@ -1,9 +1,6 @@
-
 use crate::artifact::{LockArtifact, ManifestMember};
 use crate::git::{GitHeadState, GitStatus as BackendGitStatus};
 use crate::model::ModelError;
-
-
 
 pub(crate) fn lock_match(
     lock: Option<&LockArtifact>,
@@ -165,7 +162,12 @@ mod tests {
         );
         // Same commit, different branch -> Differs (was wrongly Matches before F11).
         assert_eq!(
-            lock_match(Some(&lock), &member(), &head(Some("feature"), false), &clean),
+            lock_match(
+                Some(&lock),
+                &member(),
+                &head(Some("feature"), false),
+                &clean
+            ),
             crate::LockMatch::Differs
         );
         // Same commit/branch but detached -> Differs.
@@ -180,4 +182,3 @@ mod tests {
         );
     }
 }
-

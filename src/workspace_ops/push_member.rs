@@ -1,9 +1,6 @@
 use std::path::Path;
 
-use crate::artifact::{
-    self, ArtifactSourceKind,
-    ManifestArtifact, ManifestMember,
-};
+use crate::artifact::{self, ArtifactSourceKind, ManifestArtifact, ManifestMember};
 use crate::git::{GitBackend, GitHeadState, git_host};
 use crate::model::{ErrorCode, MemberId, ModelError, ModelResult};
 use crate::operation::{
@@ -11,7 +8,6 @@ use crate::operation::{
     resolve_per_host,
 };
 use crate::workspace::MemberPath;
-
 
 use super::*;
 
@@ -240,7 +236,10 @@ pub(crate) fn find_active_member_by_path<'a>(
     }
 }
 
-pub(crate) fn push_remote_host(member: &ManifestMember, request: &crate::PushRequest) -> Option<String> {
+pub(crate) fn push_remote_host(
+    member: &ManifestMember,
+    request: &crate::PushRequest,
+) -> Option<String> {
     let remote = resolve_push_remote(member, request).ok()?;
     member
         .remotes
@@ -369,7 +368,10 @@ pub(crate) fn resolve_push_remote(
         .ok_or_else(|| ModelError::new(ErrorCode::MissingRemote, "member has no push remote"))
 }
 
-pub(crate) fn resolve_push_refspec(head: &GitHeadState, request: &crate::PushRequest) -> ModelResult<String> {
+pub(crate) fn resolve_push_refspec(
+    head: &GitHeadState,
+    request: &crate::PushRequest,
+) -> ModelResult<String> {
     if let Some(refspec) = &request.refspec {
         return Ok(refspec.clone());
     }
@@ -462,7 +464,9 @@ pub(crate) fn push_aggregate_status(responses: &[crate::MemberResponse]) -> crat
     }
 }
 
-pub(crate) fn artifact_source_kind_to_protocol(source_kind: ArtifactSourceKind) -> crate::SourceKind {
+pub(crate) fn artifact_source_kind_to_protocol(
+    source_kind: ArtifactSourceKind,
+) -> crate::SourceKind {
     match source_kind {
         ArtifactSourceKind::Git => crate::SourceKind::Git,
         ArtifactSourceKind::Archive => crate::SourceKind::Archive,
@@ -471,4 +475,3 @@ pub(crate) fn artifact_source_kind_to_protocol(source_kind: ArtifactSourceKind) 
         ArtifactSourceKind::Generated => crate::SourceKind::Generated,
     }
 }
-

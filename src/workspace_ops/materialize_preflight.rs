@@ -1,12 +1,8 @@
 use std::path::Path;
 
-use crate::artifact::{
-    LockArtifact,
-    ManifestArtifact, ManifestMember, ResolvedMemberArtifact,
-};
+use crate::artifact::{LockArtifact, ManifestArtifact, ManifestMember, ResolvedMemberArtifact};
 use crate::git::GitBackend;
 use crate::model::{ErrorCode, ModelError, ModelResult};
-
 
 use super::*;
 
@@ -95,4 +91,3 @@ pub(crate) fn first_remote_url(member: &ManifestMember) -> ModelResult<String> {
         .map(|remote| remote.url.clone())
         .ok_or_else(|| ModelError::new(ErrorCode::MissingRemote, "member has no fetch remote"))
 }
-

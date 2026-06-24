@@ -101,17 +101,28 @@ fn lists_materialized_members_by_default() {
     let temp = TempDir::new("ls-default");
     write_workspace(
         temp.path(),
-        vec![member("mem_app", "repos/app"), member("mem_lib", "repos/lib")],
+        vec![
+            member("mem_app", "repos/app"),
+            member("mem_lib", "repos/lib"),
+        ],
         &["mem_app"],
     );
 
     let response = handle_ls(temp.path(), ls_request(&[], false), "op").unwrap();
-    assert_eq!(ids(&response), vec!["mem_app"], "only the materialized member");
+    assert_eq!(
+        ids(&response),
+        vec!["mem_app"],
+        "only the materialized member"
+    );
 
     let entry = &response.members.unwrap()[0];
     assert!(entry.materialized);
     assert_eq!(entry.path, "repos/app");
-    assert!(entry.abspath.ends_with("repos/app"), "abspath: {}", entry.abspath);
+    assert!(
+        entry.abspath.ends_with("repos/app"),
+        "abspath: {}",
+        entry.abspath
+    );
     assert!(std::path::Path::new(&entry.abspath).is_absolute());
 }
 
@@ -120,7 +131,10 @@ fn include_unmaterialized_lists_all() {
     let temp = TempDir::new("ls-all");
     write_workspace(
         temp.path(),
-        vec![member("mem_app", "repos/app"), member("mem_lib", "repos/lib")],
+        vec![
+            member("mem_app", "repos/app"),
+            member("mem_lib", "repos/lib"),
+        ],
         &["mem_app"],
     );
 
@@ -132,7 +146,10 @@ fn include_unmaterialized_lists_all() {
         .into_iter()
         .find(|member| member.id == "mem_lib")
         .unwrap();
-    assert!(!lib.materialized, "mem_lib has no lock entry → not materialized");
+    assert!(
+        !lib.materialized,
+        "mem_lib has no lock entry → not materialized"
+    );
 }
 
 #[test]
@@ -140,7 +157,10 @@ fn selection_scopes_the_listing() {
     let temp = TempDir::new("ls-sel");
     write_workspace(
         temp.path(),
-        vec![member("mem_app", "repos/app"), member("mem_lib", "repos/lib")],
+        vec![
+            member("mem_app", "repos/app"),
+            member("mem_lib", "repos/lib"),
+        ],
         &["mem_app", "mem_lib"],
     );
 

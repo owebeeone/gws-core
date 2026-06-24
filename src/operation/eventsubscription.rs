@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-
-
 use super::*;
 
 pub struct EventSubscription {
@@ -24,4 +22,3 @@ impl EventSubscription {
         events
     }
 }
-

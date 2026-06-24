@@ -4,17 +4,15 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::artifact::{
-    self, ArtifactSourceKind, DesiredRefArtifact, LockArtifact,
-    ManifestArtifact, ManifestMember, RemoteArtifact, ResolvedMemberArtifact, WorkspaceHeader,
+    self, ArtifactSourceKind, DesiredRefArtifact, LockArtifact, ManifestArtifact, ManifestMember,
+    RemoteArtifact, ResolvedMemberArtifact, WorkspaceHeader,
 };
 use crate::git::{Git2Backend, GitBackend, GitHeadState, GitStatus};
 use crate::model::{ErrorCode, MemberId, ModelError, ModelResult, SourceId};
 use crate::operation::OperationRequest;
 use crate::workspace::{
-    MemberPath, discover_workspace_root,
-    preflight_create_workspace, validate_member_path_set,
+    MemberPath, discover_workspace_root, preflight_create_workspace, validate_member_path_set,
 };
-
 
 use super::*;
 
@@ -259,7 +257,10 @@ pub(crate) fn assert_workspace_id(
     Ok(())
 }
 
-pub(crate) fn reject_existing_member_path(manifest: &ManifestArtifact, path: &MemberPath) -> ModelResult<()> {
+pub(crate) fn reject_existing_member_path(
+    manifest: &ManifestArtifact,
+    path: &MemberPath,
+) -> ModelResult<()> {
     if manifest
         .members
         .iter()
@@ -274,7 +275,10 @@ pub(crate) fn reject_existing_member_path(manifest: &ManifestArtifact, path: &Me
     }
 }
 
-pub(crate) fn reject_duplicate_member_id(manifest: &ManifestArtifact, member_id: &str) -> ModelResult<()> {
+pub(crate) fn reject_duplicate_member_id(
+    manifest: &ManifestArtifact,
+    member_id: &str,
+) -> ModelResult<()> {
     if manifest.members.iter().any(|member| member.id == member_id) {
         Err(ModelError::new(
             ErrorCode::InvalidRequest,
@@ -477,4 +481,3 @@ pub(crate) fn ensure_workspace_git_repo(root: &Path) -> ModelResult<()> {
 pub(crate) fn io_error(error: std::io::Error) -> ModelError {
     ModelError::new(ErrorCode::IoError, error.to_string())
 }
-

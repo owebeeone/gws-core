@@ -1,6 +1,6 @@
 # GWZ Forall Plan Review 55
 
-Status: review of `dev-docs/GWZForallPlan.md`
+Status: review of `dev-docs/history/GWZForallPlan.md`
 Date: 2026-06-24
 Reviewer: Codex
 
@@ -16,7 +16,7 @@ machine-output/runtime edge case unspecified.
 
 ### P1: `gwz ls --unmaterialized` cannot use `resolve_locked_selection`
 
-Reference: `dev-docs/GWZForallPlan.md:98-107`,
+Reference: `dev-docs/history/GWZForallPlan.md:98-107`,
 `src/workspace_ops/handle_materialize.rs:387-399`,
 `src/workspace_ops/push_member.rs:145-202`
 
@@ -45,8 +45,8 @@ empty listing because the default filter is materialized-only, or return a clear
 
 ### P1: The proposed `CliResponse::listing` path discards the real `ls` envelope
 
-Reference: `dev-docs/GWZForallPlan.md:63-72`,
-`dev-docs/GWZForallPlan.md:111-119`,
+Reference: `dev-docs/history/GWZForallPlan.md:63-72`,
+`dev-docs/history/GWZForallPlan.md:111-119`,
 `gwz-cli/src/append_branch_summary.rs:10-49`
 
 The plan makes `gwz ls` a proper core op with `LsResponse{response, members}`,
@@ -77,9 +77,9 @@ path is not enough for a protocol-backed operation.
 
 ### P1: `forall` inherited stdio breaks `--json` and `--jsonl`
 
-Reference: `dev-docs/GWZForallPlan.md:80`,
-`dev-docs/GWZForallPlan.md:140-145`,
-`dev-docs/GWZForallPlan.md:157-160`,
+Reference: `dev-docs/history/GWZForallPlan.md:80`,
+`dev-docs/history/GWZForallPlan.md:140-145`,
+`dev-docs/history/GWZForallPlan.md:157-160`,
 `gwz-cli/src/main.rs:103-106`,
 `gwz-cli/src/append_branch_summary.rs:584-605`
 
@@ -104,9 +104,9 @@ proving emitted stdout remains valid JSON/JSONL.
 
 ### P1: Unknown `projects` cannot be a parse error
 
-Reference: `dev-docs/GWZForallPlan.md:26-37`,
-`dev-docs/GWZForallPlan.md:151-162`,
-`dev-docs/GWZForallPlan.md:164-166`
+Reference: `dev-docs/history/GWZForallPlan.md:26-37`,
+`dev-docs/history/GWZForallPlan.md:151-162`,
+`dev-docs/history/GWZForallPlan.md:164-166`
 
 The plan correctly says parse has no filesystem/backend access and member
 resolution happens in execute. It later asks for an "unknown-project" parse test
@@ -127,8 +127,8 @@ Unknown project tests should be execute tests with a fixture workspace.
 
 ### P1: `ExecResult{name, exit_code}` cannot represent real process outcomes
 
-Reference: `dev-docs/GWZForallPlan.md:128-132`,
-`dev-docs/GWZForallPlan.md:140-145`
+Reference: `dev-docs/history/GWZForallPlan.md:128-132`,
+`dev-docs/history/GWZForallPlan.md:140-145`
 
 `std::process::ExitStatus::code()` is optional on Unix because a process can be
 terminated by signal. `Command::new(...).status()` can also fail before a child
@@ -156,11 +156,11 @@ failure solely from a missing/odd exit code.
 
 ### P2: "member name" is undefined and not present in `MemberEntry`
 
-Reference: `dev-docs/GWZForallPlan.md:13`,
-`dev-docs/GWZForallPlan.md:78`,
-`dev-docs/GWZForallPlan.md:84`,
-`dev-docs/GWZForallPlan.md:128`,
-`dev-docs/GWZForallPlan.md:141-145`,
+Reference: `dev-docs/history/GWZForallPlan.md:13`,
+`dev-docs/history/GWZForallPlan.md:78`,
+`dev-docs/history/GWZForallPlan.md:84`,
+`dev-docs/history/GWZForallPlan.md:128`,
+`dev-docs/history/GWZForallPlan.md:141-145`,
 `gwz-cli/src/progress_detail.rs:154-159`
 
 The protocol entry is `MemberEntry{id, path, abspath, materialized}`, but the
@@ -186,7 +186,7 @@ vars can all refer to different things.
 
 ### P2: CLI-side `Forall` envelope stamping needs a concrete public path
 
-Reference: `dev-docs/GWZForallPlan.md:131-134`,
+Reference: `dev-docs/history/GWZForallPlan.md:131-134`,
 `src/workspace_ops/handle_create_repo.rs:417-432`,
 `src/operation/push_event.rs:83-118`
 
@@ -211,7 +211,7 @@ second is cleaner if more CLI-local operations are expected.
 
 ### P2: The plan conflicts with the existing `gwz run` design doc
 
-Reference: `dev-docs/GWZForallPlan.md:1-20`,
+Reference: `dev-docs/history/GWZForallPlan.md:1-20`,
 `gwz-cli/dev-docs/GwzMemberGitSpec.md:170-239`
 
 `GwzMemberGitSpec.md` already describes this escape hatch as `gwz run`, with

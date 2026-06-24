@@ -612,7 +612,11 @@ mod tests {
             sample_snapshot()
         );
 
-        assert!(temp.path().join("gwz.conf/snapshots/snap_demo.yaml").is_file());
+        assert!(
+            temp.path()
+                .join("gwz.conf/snapshots/snap_demo.yaml")
+                .is_file()
+        );
     }
 
     #[test]
@@ -738,7 +742,10 @@ mod tests {
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .filter(|name| name.contains(".tmp"))
             .collect::<Vec<_>>();
-        assert!(leftovers.is_empty(), "temp files left behind: {leftovers:?}");
+        assert!(
+            leftovers.is_empty(),
+            "temp files left behind: {leftovers:?}"
+        );
     }
 
     #[test]
@@ -759,7 +766,10 @@ mod tests {
             .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .filter(|name| name.contains(".tmp"))
             .collect::<Vec<_>>();
-        assert!(leftovers.is_empty(), "temp files left behind: {leftovers:?}");
+        assert!(
+            leftovers.is_empty(),
+            "temp files left behind: {leftovers:?}"
+        );
     }
 
     struct TempDir {

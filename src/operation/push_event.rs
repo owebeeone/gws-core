@@ -6,7 +6,6 @@ use std::thread;
 use crate::model;
 use crate::runtime::clock::TimestampMs;
 
-
 use super::*;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -541,4 +540,3 @@ impl From<PlannedAction> for crate::PlannedAction {
         }
     }
 }
-

@@ -2,20 +2,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use crate::artifact::{
-    self, ArtifactSourceKind, DesiredRefArtifact, LockArtifact,
-    ManifestArtifact, ManifestMember, RemoteArtifact, ResolvedMemberArtifact, WorkspaceHeader,
+    self, ArtifactSourceKind, DesiredRefArtifact, LockArtifact, ManifestArtifact, ManifestMember,
+    RemoteArtifact, ResolvedMemberArtifact, WorkspaceHeader,
 };
 use crate::git::{GitBackend, GitHeadState, git_host};
 use crate::model::{ErrorCode, MemberId, ModelError, ModelResult, SourceId};
 use crate::operation::{
-    EventEmitter, EventSink, OperationRequest, par_map_per_host, resolve_jobs,
-    resolve_per_host,
+    EventEmitter, EventSink, OperationRequest, par_map_per_host, resolve_jobs, resolve_per_host,
 };
 use crate::workspace::{
-    MemberPath, WORKSPACE_MANIFEST,
-    preflight_create_workspace, validate_member_path_set,
+    MemberPath, WORKSPACE_MANIFEST, preflight_create_workspace, validate_member_path_set,
 };
-
 
 use super::*;
 
@@ -317,7 +314,9 @@ pub(crate) fn init_source_plans(
     Ok(plans)
 }
 
-pub(crate) fn assert_init_target_is_head(target: Option<&crate::MaterializeTarget>) -> ModelResult<()> {
+pub(crate) fn assert_init_target_is_head(
+    target: Option<&crate::MaterializeTarget>,
+) -> ModelResult<()> {
     match target {
         None => Ok(()),
         Some(target)
@@ -334,7 +333,10 @@ pub(crate) fn assert_init_target_is_head(target: Option<&crate::MaterializeTarge
     }
 }
 
-pub(crate) fn preflight_init_execution_targets(root: &Path, plans: &[InitSourcePlan]) -> ModelResult<()> {
+pub(crate) fn preflight_init_execution_targets(
+    root: &Path,
+    plans: &[InitSourcePlan],
+) -> ModelResult<()> {
     for plan in plans {
         if plan.source.branch.is_some() {
             return Err(ModelError::new(
@@ -367,4 +369,3 @@ pub(crate) fn repo_name_from_url(url: &str) -> String {
 pub(crate) fn invalid(message: impl Into<String>) -> ModelError {
     ModelError::new(ErrorCode::InvalidRequest, message)
 }
-

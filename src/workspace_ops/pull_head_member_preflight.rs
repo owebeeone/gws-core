@@ -1,8 +1,7 @@
 use std::path::Path;
 
 use crate::artifact::{
-    self, LockArtifact,
-    ManifestArtifact, ManifestMember, ResolvedMemberArtifact,
+    self, LockArtifact, ManifestArtifact, ManifestMember, ResolvedMemberArtifact,
 };
 use crate::git::{GitBackend, git_host};
 use crate::model::{ErrorCode, ModelError, ModelResult};
@@ -10,7 +9,6 @@ use crate::operation::{
     EventEmitter, EventSink, NullSink, OperationRequest, par_map_per_host, resolve_jobs,
     resolve_per_host,
 };
-
 
 use super::*;
 
@@ -95,7 +93,12 @@ where
             plan.state.clone()
         };
         lock.members.insert(plan.member_id.clone(), state.clone());
-        responses.push(pull_result_response(member, &state, &plan.action, &conflicts));
+        responses.push(pull_result_response(
+            member,
+            &state,
+            &plan.action,
+            &conflicts,
+        ));
     }
     lock.created_at = now_marker();
     artifact::write_lock(&root, &lock)?;
@@ -115,10 +118,18 @@ pub(crate) enum PullHeadAction {
     SkipNoFetchRemote,
     /// Fetched but deliberately not integrated (`--sync fetch-only`).
     FetchOnly,
-    FastForward { remote_ref: String },
-    Merge { remote_ref: String },
-    Rebase { remote_ref: String },
-    Reset { remote_ref: String },
+    FastForward {
+        remote_ref: String,
+    },
+    Merge {
+        remote_ref: String,
+    },
+    Rebase {
+        remote_ref: String,
+    },
+    Reset {
+        remote_ref: String,
+    },
 }
 
 impl PullHeadAction {
@@ -265,7 +276,12 @@ where
             format!("lock record missing for member '{member_id}'"),
         )
     })?;
-    if member.desired.as_ref().and_then(|desired| desired.local_only) == Some(true) {
+    if member
+        .desired
+        .as_ref()
+        .and_then(|desired| desired.local_only)
+        == Some(true)
+    {
         return Ok(());
     }
     let member_root = root.join(&state.path);
@@ -574,9 +590,7 @@ pub(crate) fn pull_result_response(
         state: Some(protocol_state(member, state)),
         git_status: None,
         // A conflicted worktree no longer matches the lock; don't claim it does.
-        lock_match: conflicts
-            .is_empty()
-            .then_some(crate::LockMatch::Matches),
+        lock_match: conflicts.is_empty().then_some(crate::LockMatch::Matches),
     }
 }
 
@@ -588,7 +602,9 @@ pub(crate) fn pull_aggregate_status(plans: &[PullHeadPlan]) -> crate::AggregateS
     }
 }
 
-pub(crate) fn pull_response_aggregate(responses: &[crate::MemberResponse]) -> crate::AggregateStatus {
+pub(crate) fn pull_response_aggregate(
+    responses: &[crate::MemberResponse],
+) -> crate::AggregateStatus {
     if responses
         .iter()
         .any(|response| response.status == crate::MemberStatus::Conflicted)
@@ -603,4 +619,3 @@ pub(crate) fn pull_response_aggregate(responses: &[crate::MemberResponse]) -> cr
         crate::AggregateStatus::Ok
     }
 }
-

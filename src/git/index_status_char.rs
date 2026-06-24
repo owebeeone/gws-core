@@ -1,7 +1,3 @@
-
-
-
-
 pub(crate) fn index_status_char(status: git2::Status) -> &'static str {
     if status.contains(git2::Status::INDEX_NEW) {
         "A"
@@ -17,4 +13,3 @@ pub(crate) fn index_status_char(status: git2::Status) -> &'static str {
         " "
     }
 }
-

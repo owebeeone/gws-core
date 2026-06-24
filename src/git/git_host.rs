@@ -1,7 +1,3 @@
-
-
-
-
 /// Extracts the remote host from a git URL, for per-host connection limiting.
 /// Handles scp-like `git@host:path`, scheme URLs (`https://`, `ssh://`, …), and
 /// returns `None` for local paths or any URL with no parseable host (which the
@@ -30,4 +26,3 @@ pub fn git_host(url: &str) -> Option<String> {
     }
     Some(host.to_ascii_lowercase())
 }
-

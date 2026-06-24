@@ -19,7 +19,10 @@ fn commit_creates_a_commit_and_self_verifies_head_advanced() {
     let after = backend.head(&repo).unwrap().commit;
     assert_eq!(after.as_deref(), Some(result.commit.as_str()));
     assert_ne!(before, after);
-    assert!(status_porcelain(&repo).trim().is_empty(), "clean tree at the new commit");
+    assert!(
+        status_porcelain(&repo).trim().is_empty(),
+        "clean tree at the new commit"
+    );
 }
 
 #[test]
@@ -37,7 +40,10 @@ fn commit_all_stages_tracked_modifications_like_git_commit_dash_a() {
 
     let result = backend.commit(&repo, "second", true).unwrap();
     assert_ne!(result.commit, base);
-    assert!(status_porcelain(&repo).trim().is_empty(), "clean after commit -a");
+    assert!(
+        status_porcelain(&repo).trim().is_empty(),
+        "clean after commit -a"
+    );
 }
 
 // SSH robustness: fail fast instead of hanging on auth/handshake stalls.
@@ -62,7 +68,10 @@ fn ssh_credential_callback_gives_up_after_one_agent_attempt() {
         CredentialHelperPolicy::Disabled,
         &mut attempts,
     );
-    assert!(second.is_err(), "second ssh-key request must give up, not loop");
+    assert!(
+        second.is_err(),
+        "second ssh-key request must give up, not loop"
+    );
     // The username-negotiation phase must not consume an ssh attempt.
     let mut username_attempts = 0u32;
     let _ = remote_credential(
@@ -99,7 +108,10 @@ fn ssh_clone_times_out_instead_of_hanging() {
     let start = Instant::now();
     let result = Git2Backend::new().clone_repo(&url, &temp.path().join("clone"));
     let elapsed = start.elapsed();
-    assert!(result.is_err(), "clone of a silent SSH endpoint must fail, not hang");
+    assert!(
+        result.is_err(),
+        "clone of a silent SSH endpoint must fail, not hang"
+    );
     assert!(
         elapsed < Duration::from_secs(10),
         "must terminate quickly via the timeout (took {elapsed:?})"

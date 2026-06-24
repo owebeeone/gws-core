@@ -52,7 +52,11 @@ fn exclude_is_idempotent() {
     ensure_workspace_exclude(temp.path(), &lock).unwrap();
     let once = read_exclude(temp.path());
     ensure_workspace_exclude(temp.path(), &lock).unwrap();
-    assert_eq!(once, read_exclude(temp.path()), "second run must not change the file");
+    assert_eq!(
+        once,
+        read_exclude(temp.path()),
+        "second run must not change the file"
+    );
 }
 
 #[test]
@@ -71,6 +75,9 @@ fn exclude_preserves_user_lines_and_reconciles_members() {
     ensure_workspace_exclude(temp.path(), &lock_with_members(&["a"])).unwrap();
     let after = read_exclude(temp.path());
     assert!(after.contains("/a/"));
-    assert!(!after.contains("/b/"), "removed member dropped from the block");
+    assert!(
+        !after.contains("/b/"),
+        "removed member dropped from the block"
+    );
     assert!(after.contains("/scratch/"), "user lines still preserved");
 }

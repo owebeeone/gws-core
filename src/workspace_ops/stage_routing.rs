@@ -91,7 +91,9 @@ fn add(
     spec: String,
     explicit: bool,
 ) {
-    let entry = groups.entry(key).or_insert_with(|| (BTreeSet::new(), false));
+    let entry = groups
+        .entry(key)
+        .or_insert_with(|| (BTreeSet::new(), false));
     entry.0.insert(spec);
     entry.1 |= explicit;
 }

@@ -381,8 +381,8 @@ the response rather than hidden behind a failed batch abstraction.
   - branch labels, grouping, and branch difference projection for status/list.
 - `protocol/gwz.taut.py` - `MaterializeTargetKind`, `MaterializeTarget`,
   `SnapshotRequest`, and new branch request types.
-- `GWZTagPlan.md` - similar split between GWZ workspace artifacts and Git-native
-  ref management.
+- `dev-docs/history/GWZTagPlan.md` - similar split between GWZ workspace
+  artifacts and Git-native ref management.
 
 ## 12. Out of scope for the first implementation
 

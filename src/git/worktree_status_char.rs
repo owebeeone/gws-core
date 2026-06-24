@@ -1,7 +1,3 @@
-
-
-
-
 pub(crate) fn worktree_status_char(status: git2::Status) -> &'static str {
     if status.contains(git2::Status::WT_NEW) {
         "?"
@@ -17,4 +13,3 @@ pub(crate) fn worktree_status_char(status: git2::Status) -> &'static str {
         " "
     }
 }
-

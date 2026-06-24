@@ -1,7 +1,3 @@
-
-
-
-
 /// Default maximum concurrent connections to any one host.
 pub const DEFAULT_MAX_PER_HOST: usize = 8;
 
@@ -13,4 +9,3 @@ pub fn resolve_per_host(requested: Option<i64>) -> usize {
         _ => DEFAULT_MAX_PER_HOST,
     }
 }
-

@@ -1,7 +1,4 @@
-
 use crate::artifact::ArtifactSourceKind;
-
-
 
 pub(crate) fn protocol_source_kind(source_kind: ArtifactSourceKind) -> crate::SourceKind {
     match source_kind {
@@ -12,4 +9,3 @@ pub(crate) fn protocol_source_kind(source_kind: ArtifactSourceKind) -> crate::So
         ArtifactSourceKind::Generated => crate::SourceKind::Generated,
     }
 }
-

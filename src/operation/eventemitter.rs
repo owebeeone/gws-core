@@ -1,9 +1,6 @@
 use std::collections::HashMap;
-use std::sync::atomic::AtomicI64;
 use std::sync::Mutex;
-
-
-
+use std::sync::atomic::AtomicI64;
 
 /// Delivery seam for operation events: an implementation decides what to do
 /// with each event (buffer it, stream it as JSONL, render progress, drop it).
@@ -32,4 +29,3 @@ pub struct EventEmitter<'a> {
     pub(crate) last_progress_ms: Mutex<HashMap<String, i64>>,
     pub(crate) sink: &'a dyn EventSink,
 }
-

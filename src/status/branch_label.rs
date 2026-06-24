@@ -1,7 +1,4 @@
-
 use crate::git::GitHeadState;
-
-
 
 pub(crate) fn branch_label(head: &GitHeadState) -> String {
     if let Some(branch) = &head.branch {
@@ -12,4 +9,3 @@ pub(crate) fn branch_label(head: &GitHeadState) -> String {
         "unborn".to_owned()
     }
 }
-

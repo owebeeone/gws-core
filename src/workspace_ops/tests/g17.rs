@@ -25,8 +25,20 @@ fn push_then_list_remote_then_delete_remote() {
     let member_root = temp.path().join("remote");
 
     // Tag locally, then push to the member's origin.
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Create, Some("v1"), None), "op").unwrap();
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Push, Some("v1"), Some("origin")), "op").unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Create, Some("v1"), None),
+        "op",
+    )
+    .unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Push, Some("v1"), Some("origin")),
+        "op",
+    )
+    .unwrap();
     assert!(
         backend
             .ls_remote(&member_root, "origin")
@@ -37,15 +49,26 @@ fn push_then_list_remote_then_delete_remote() {
     );
 
     // list --remote sees it with the prefix stripped.
-    let listed =
-        handle_tag(&backend, temp.path(), tag_request(crate::TagOp::List, None, Some("origin")), "op").unwrap();
+    let listed = handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::List, None, Some("origin")),
+        "op",
+    )
+    .unwrap();
     assert!(
         listed.tags.unwrap().iter().any(|t| t.name == "v1"),
         "v1 listed from the remote"
     );
 
     // delete --remote removes it from the remote but keeps the local copy.
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Delete, Some("v1"), Some("origin")), "op").unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Delete, Some("v1"), Some("origin")),
+        "op",
+    )
+    .unwrap();
     assert!(
         !backend
             .ls_remote(&member_root, "origin")
@@ -55,7 +78,10 @@ fn push_then_list_remote_then_delete_remote() {
         "tag removed from the remote"
     );
     assert!(
-        backend.tag_list(&member_root).unwrap().contains(&"v1".to_owned()),
+        backend
+            .tag_list(&member_root)
+            .unwrap()
+            .contains(&"v1".to_owned()),
         "local tag retained after a remote delete"
     );
 }
@@ -67,16 +93,48 @@ fn fetch_restores_a_tag_from_the_remote() {
     let _fixture = init_one_member_workspace(temp.path(), &backend, "tag-fetch-ws-source");
     let member_root = temp.path().join("remote");
 
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Create, Some("v1"), None), "op").unwrap();
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Push, Some("v1"), Some("origin")), "op").unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Create, Some("v1"), None),
+        "op",
+    )
+    .unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Push, Some("v1"), Some("origin")),
+        "op",
+    )
+    .unwrap();
 
     // Drop the local copy, then fetch it back from the remote.
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Delete, Some("v1"), None), "op").unwrap();
-    assert!(!backend.tag_list(&member_root).unwrap().contains(&"v1".to_owned()));
-
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Fetch, None, Some("origin")), "op").unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Delete, Some("v1"), None),
+        "op",
+    )
+    .unwrap();
     assert!(
-        backend.tag_list(&member_root).unwrap().contains(&"v1".to_owned()),
+        !backend
+            .tag_list(&member_root)
+            .unwrap()
+            .contains(&"v1".to_owned())
+    );
+
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Fetch, None, Some("origin")),
+        "op",
+    )
+    .unwrap();
+    assert!(
+        backend
+            .tag_list(&member_root)
+            .unwrap()
+            .contains(&"v1".to_owned()),
         "fetch restored the tag from the remote"
     );
 }
@@ -88,12 +146,30 @@ fn push_with_no_name_pushes_every_tag() {
     let _fixture = init_one_member_workspace(temp.path(), &backend, "tag-push-all-source");
     let member_root = temp.path().join("remote");
 
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Create, Some("v1"), None), "op").unwrap();
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Create, Some("v2"), None), "op").unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Create, Some("v1"), None),
+        "op",
+    )
+    .unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Create, Some("v2"), None),
+        "op",
+    )
+    .unwrap();
 
     // Push with NO name → every tag lands on the remote (libgit2 can't expand a glob,
     // so the handler must enumerate concrete refspecs).
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Push, None, Some("origin")), "op").unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Push, None, Some("origin")),
+        "op",
+    )
+    .unwrap();
 
     let remote_tags: Vec<String> = backend
         .ls_remote(&member_root, "origin")
@@ -101,6 +177,12 @@ fn push_with_no_name_pushes_every_tag() {
         .into_iter()
         .map(|r| r.name)
         .collect();
-    assert!(remote_tags.contains(&"refs/tags/v1".to_owned()), "v1 pushed");
-    assert!(remote_tags.contains(&"refs/tags/v2".to_owned()), "v2 pushed");
+    assert!(
+        remote_tags.contains(&"refs/tags/v1".to_owned()),
+        "v1 pushed"
+    );
+    assert!(
+        remote_tags.contains(&"refs/tags/v2".to_owned()),
+        "v2 pushed"
+    );
 }

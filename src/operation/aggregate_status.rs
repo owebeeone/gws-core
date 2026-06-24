@@ -1,7 +1,4 @@
-
 use crate::model;
-
-
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ExecutionReport {
@@ -131,4 +128,3 @@ impl From<MemberExecutionStatus> for crate::MemberStatus {
         }
     }
 }
-

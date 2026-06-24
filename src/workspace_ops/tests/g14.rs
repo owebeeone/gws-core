@@ -90,7 +90,13 @@ fn dot_at_workspace_root_spans_all_repos() {
 
 #[test]
 fn dot_inside_member_stays_in_that_member() {
-    let got = resolve("/ws", &["gwz-cli", "gwz-core"], "/ws/gwz-cli", &["."], false);
+    let got = resolve(
+        "/ws",
+        &["gwz-cli", "gwz-core"],
+        "/ws/gwz-cli",
+        &["."],
+        false,
+    );
     assert_eq!(got, vec![target(Some("gwz-cli"), &["."])]);
 }
 
@@ -109,7 +115,13 @@ fn all_flag_targets_root_and_every_member() {
 
 #[test]
 fn innermost_member_wins_for_nested_members() {
-    let got = resolve("/ws", &["sub", "sub/nested"], "/ws", &["sub/nested/x.rs"], false);
+    let got = resolve(
+        "/ws",
+        &["sub", "sub/nested"],
+        "/ws",
+        &["sub/nested/x.rs"],
+        false,
+    );
     assert_eq!(got, vec![target(Some("sub/nested"), &["x.rs"])]);
 }
 
@@ -147,8 +159,13 @@ fn path_outside_workspace_is_path_escape_error() {
 
 #[test]
 fn nothing_specified_is_invalid_request() {
-    let err =
-        resolve_stage_targets(Path::new("/ws"), &members(&["gwz-cli"]), Path::new("/ws"), &[], false)
-            .unwrap_err();
+    let err = resolve_stage_targets(
+        Path::new("/ws"),
+        &members(&["gwz-cli"]),
+        Path::new("/ws"),
+        &[],
+        false,
+    )
+    .unwrap_err();
     assert_eq!(err.code, ErrorCode::InvalidRequest);
 }

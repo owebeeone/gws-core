@@ -2,7 +2,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::runtime::clock::TimestampMs;
 
-
 use super::*;
 
 impl RuntimeEventSink {
@@ -43,4 +42,3 @@ pub(crate) fn now_ms() -> TimestampMs {
         .as_millis();
     TimestampMs(millis.min(i64::MAX as u128) as i64)
 }
-

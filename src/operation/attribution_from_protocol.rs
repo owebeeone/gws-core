@@ -1,8 +1,5 @@
-
 use crate::model;
 use crate::runtime::clock::TimestampMs;
-
-
 
 pub(crate) fn attribution_from_protocol(
     value: &crate::OperationAttribution,
@@ -22,7 +19,9 @@ pub(crate) fn attribution_from_protocol(
     Ok(attribution)
 }
 
-pub(crate) fn git_identity_from_protocol(value: &crate::GitObjectIdentity) -> model::GitObjectIdentity {
+pub(crate) fn git_identity_from_protocol(
+    value: &crate::GitObjectIdentity,
+) -> model::GitObjectIdentity {
     model::GitObjectIdentity {
         name: value.name.clone(),
         email: value.email.clone(),
@@ -30,4 +29,3 @@ pub(crate) fn git_identity_from_protocol(value: &crate::GitObjectIdentity) -> mo
         timezone_offset_minutes: value.timezone_offset_minutes,
     }
 }
-

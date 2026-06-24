@@ -1,7 +1,5 @@
 use std::collections::BTreeMap;
 
-
-
 pub(crate) fn branch_groups_and_differences(
     branches: &[crate::GitMemberBranchStatus],
 ) -> (Vec<crate::GitBranchGroup>, Vec<crate::GitBranchDifference>) {
@@ -55,4 +53,3 @@ pub(crate) fn branch_groups_and_differences(
 
     (groups, differences)
 }
-

@@ -1,8 +1,6 @@
 use std::collections::VecDeque;
 use std::sync::{Condvar, Mutex};
 
-
-
 use super::*;
 
 impl OperationRecord {
@@ -24,4 +22,3 @@ impl OperationRecord {
         self.complete.notify_all();
     }
 }
-

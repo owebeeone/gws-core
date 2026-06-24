@@ -3,8 +3,6 @@ use std::sync::Mutex;
 
 use crate::model;
 
-
-
 #[derive(Default)]
 pub struct MemberLockManager {
     pub(crate) locked: Mutex<HashSet<String>>,
@@ -38,4 +36,3 @@ impl Drop for MemberMutationGuard<'_> {
             .remove(&self.member_id);
     }
 }
-

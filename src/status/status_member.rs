@@ -7,7 +7,6 @@ use crate::model::{ErrorCode, MemberId, ModelError, ModelResult};
 use crate::operation::{ActionKind, OperationRequest};
 use crate::workspace::{MemberPath, discover_workspace_root};
 
-
 use super::*;
 
 pub fn handle_status<B>(
@@ -226,7 +225,10 @@ pub(crate) struct RootStatusReport {
     pub(crate) status: BackendGitStatus,
 }
 
-pub(crate) fn root_status<B>(backend: &B, workspace_root: &Path) -> ModelResult<Option<RootStatusReport>>
+pub(crate) fn root_status<B>(
+    backend: &B,
+    workspace_root: &Path,
+) -> ModelResult<Option<RootStatusReport>>
 where
     B: GitBackend,
 {
@@ -422,7 +424,9 @@ pub(crate) fn report_file_changes(
         .collect()
 }
 
-pub(crate) fn report_branch_status(report: &StatusMemberReport) -> Option<crate::GitMemberBranchStatus> {
+pub(crate) fn report_branch_status(
+    report: &StatusMemberReport,
+) -> Option<crate::GitMemberBranchStatus> {
     let head = report.head.as_ref()?;
     let label = branch_label(head);
     Some(crate::GitMemberBranchStatus {
@@ -483,10 +487,12 @@ pub(crate) fn aggregate_status(members: &[crate::MemberResponse]) -> crate::Aggr
         .any(|member| member.status == crate::MemberStatus::Rejected)
     {
         crate::AggregateStatus::Rejected
-    } else if members
-        .iter()
-        .any(|member| member.git_status.as_ref().is_some_and(|status| status.dirty))
-    {
+    } else if members.iter().any(|member| {
+        member
+            .git_status
+            .as_ref()
+            .is_some_and(|status| status.dirty)
+    }) {
         // F5/AD3: a dirty member is observable state, not a failure — surface it in the
         // aggregate instead of masquerading as a clean `Ok` (exit code stays 0).
         crate::AggregateStatus::Dirty
@@ -498,4 +504,3 @@ pub(crate) fn aggregate_status(members: &[crate::MemberResponse]) -> crate::Aggr
 pub(crate) fn invalid(message: impl Into<String>) -> ModelError {
     ModelError::new(ErrorCode::InvalidRequest, message)
 }
-

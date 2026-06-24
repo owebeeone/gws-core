@@ -2,17 +2,14 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use crate::artifact::{
-    self, CreatedByArtifact, LockArtifact, ManifestArtifact, ManifestMember,
-    ResolvedMemberArtifact,
+    self, CreatedByArtifact, LockArtifact, ManifestArtifact, ManifestMember, ResolvedMemberArtifact,
 };
 use crate::git::{GitBackend, git_host};
 use crate::model::{ErrorCode, ModelError, ModelResult};
 use crate::operation::{
-    EventEmitter, EventSink, OperationRequest, par_map_per_host, resolve_jobs,
-    resolve_per_host,
+    EventEmitter, EventSink, OperationRequest, par_map_per_host, resolve_jobs, resolve_per_host,
 };
 use crate::workspace::WORKSPACE_MANIFEST;
-
 
 use super::*;
 
@@ -580,4 +577,3 @@ pub(crate) fn tag_error(error: ModelError) -> ModelError {
         error
     }
 }
-

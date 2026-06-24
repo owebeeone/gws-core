@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 
 use crate::model::{ErrorCode, ModelError, ModelResult};
 
-
 use super::*;
 
 pub trait GitBackend {
@@ -436,8 +435,7 @@ impl GitBackend for Git2Backend {
                 .map_err(|err| ModelError::new(ErrorCode::GitCommandFailed, err.to_string()))?;
             let conflicts = conflict_paths(&index)?;
             // AD1 self-verify: the conflict state actually persisted on disk.
-            if conflicts.is_empty()
-                || !open_repo(path)?.index().map_err(git_error)?.has_conflicts()
+            if conflicts.is_empty() || !open_repo(path)?.index().map_err(git_error)?.has_conflicts()
             {
                 return Err(ModelError::new(
                     ErrorCode::GitCommandFailed,
@@ -490,8 +488,12 @@ impl GitBackend for Git2Backend {
     ) -> ModelResult<GitIntegrateResult> {
         let repo = open_repo(path)?;
         let upstream_oid = repo.revparse_single(upstream_ref).map_err(git_error)?.id();
-        let upstream_annotated = repo.find_annotated_commit(upstream_oid).map_err(git_error)?;
-        let (analysis, _) = repo.merge_analysis(&[&upstream_annotated]).map_err(git_error)?;
+        let upstream_annotated = repo
+            .find_annotated_commit(upstream_oid)
+            .map_err(git_error)?;
+        let (analysis, _) = repo
+            .merge_analysis(&[&upstream_annotated])
+            .map_err(git_error)?;
         if analysis.is_up_to_date() {
             return Ok(GitIntegrateResult::clean(upstream_oid.to_string()));
         }
@@ -769,12 +771,18 @@ impl GitBackend for Git2Backend {
         }
         command.arg("-m").arg(message);
         let output = command.output().map_err(|err| {
-            ModelError::new(ErrorCode::GitCommandFailed, format!("failed to run git commit: {err}"))
+            ModelError::new(
+                ErrorCode::GitCommandFailed,
+                format!("failed to run git commit: {err}"),
+            )
         })?;
         if !output.status.success() {
             return Err(ModelError::new(
                 ErrorCode::GitCommandFailed,
-                format!("git commit failed: {}", String::from_utf8_lossy(&output.stderr).trim()),
+                format!(
+                    "git commit failed: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ),
             ));
         }
         // AD1 self-verify: HEAD advanced to a new commit (read fresh).
@@ -810,12 +818,18 @@ impl GitBackend for Git2Backend {
         }
         command.arg(name);
         let output = command.output().map_err(|err| {
-            ModelError::new(ErrorCode::GitCommandFailed, format!("failed to run git tag: {err}"))
+            ModelError::new(
+                ErrorCode::GitCommandFailed,
+                format!("failed to run git tag: {err}"),
+            )
         })?;
         if !output.status.success() {
             return Err(ModelError::new(
                 ErrorCode::GitCommandFailed,
-                format!("git tag failed: {}", String::from_utf8_lossy(&output.stderr).trim()),
+                format!(
+                    "git tag failed: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ),
             ));
         }
         // AD1 self-verify: the tag exists (read fresh) and resolves to a commit.
@@ -828,7 +842,10 @@ impl GitBackend for Git2Backend {
         let commit = self
             .read_ref(path, &format!("refs/tags/{name}^{{commit}}"))?
             .ok_or_else(|| {
-                ModelError::new(ErrorCode::GitCommandFailed, format!("tag '{name}' did not resolve"))
+                ModelError::new(
+                    ErrorCode::GitCommandFailed,
+                    format!("tag '{name}' did not resolve"),
+                )
             })?;
         Ok(GitTagResult {
             name: name.to_owned(),
@@ -858,12 +875,18 @@ impl GitBackend for Git2Backend {
             .arg(name)
             .output()
             .map_err(|err| {
-                ModelError::new(ErrorCode::GitCommandFailed, format!("failed to run git tag -d: {err}"))
+                ModelError::new(
+                    ErrorCode::GitCommandFailed,
+                    format!("failed to run git tag -d: {err}"),
+                )
             })?;
         if !output.status.success() {
             return Err(ModelError::new(
                 ErrorCode::GitCommandFailed,
-                format!("git tag -d failed: {}", String::from_utf8_lossy(&output.stderr).trim()),
+                format!(
+                    "git tag -d failed: {}",
+                    String::from_utf8_lossy(&output.stderr).trim()
+                ),
             ));
         }
         // AD1 self-verify: the tag is gone.
@@ -944,7 +967,9 @@ pub(crate) fn merge_signature(repo: &git2::Repository) -> ModelResult<git2::Sign
     git2::Signature::now("gwz", "gwz@localhost").map_err(git_error)
 }
 
-pub(crate) fn remote_fetch_options(credential_helpers: CredentialHelperPolicy) -> git2::FetchOptions<'static> {
+pub(crate) fn remote_fetch_options(
+    credential_helpers: CredentialHelperPolicy,
+) -> git2::FetchOptions<'static> {
     fetch_options_with_progress(credential_helpers, None)
 }
 
@@ -964,13 +989,17 @@ pub(crate) fn fetch_options_with_progress<'a>(
     options
 }
 
-pub(crate) fn remote_push_options(credential_helpers: CredentialHelperPolicy) -> git2::PushOptions<'static> {
+pub(crate) fn remote_push_options(
+    credential_helpers: CredentialHelperPolicy,
+) -> git2::PushOptions<'static> {
     let mut options = git2::PushOptions::new();
     options.remote_callbacks(remote_callbacks(credential_helpers));
     options
 }
 
-pub(crate) fn remote_callbacks<'a>(credential_helpers: CredentialHelperPolicy) -> git2::RemoteCallbacks<'a> {
+pub(crate) fn remote_callbacks<'a>(
+    credential_helpers: CredentialHelperPolicy,
+) -> git2::RemoteCallbacks<'a> {
     let mut callbacks = git2::RemoteCallbacks::new();
     // libgit2 re-invokes this after each auth rejection; track SSH attempts so we offer
     // the agent once and then fail, instead of re-offering a dead credential forever.
@@ -1054,4 +1083,3 @@ pub(crate) fn rename_delta(
     let new = delta.new_file().path()?.to_str()?.to_owned();
     Some((old, new))
 }
-

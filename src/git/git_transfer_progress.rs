@@ -1,7 +1,3 @@
-
-
-
-
 pub(crate) fn git_transfer_progress(stats: &git2::Progress) -> crate::GitTransferProgress {
     let received_objects = stats.received_objects();
     let total_objects = stats.total_objects();
@@ -21,4 +17,3 @@ pub(crate) fn git_transfer_progress(stats: &git2::Progress) -> crate::GitTransfe
         total_deltas: Some(stats.total_deltas() as i64),
     }
 }
-

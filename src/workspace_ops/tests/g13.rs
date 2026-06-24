@@ -76,7 +76,10 @@ fn commit_fans_out_to_members_then_commits_root_last() {
     // The member HEAD advanced and the lock records the new commit.
     let after = backend.head(&member_root).unwrap().commit;
     assert_ne!(before, after);
-    assert_eq!(read_lock(temp.path()).unwrap().members["mem_remote"].commit, after);
+    assert_eq!(
+        read_lock(temp.path()).unwrap().members["mem_remote"].commit,
+        after
+    );
 
     // The root was committed last (the lock update): HEAD has a commit and the working
     // tree is clean — gwz.conf committed and the member hidden via .git/info/exclude.
@@ -95,11 +98,16 @@ fn commit_with_nothing_to_commit_is_a_success_noop() {
     set_identity(temp.path());
 
     // No changes anywhere → success, nothing committed; the root HEAD stays unborn.
-    let response = handle_commit(&backend, temp.path(), commit_request(), "op_commit_noop").unwrap();
+    let response =
+        handle_commit(&backend, temp.path(), commit_request(), "op_commit_noop").unwrap();
     assert_eq!(
         response.response.meta.aggregate_status,
         crate::AggregateStatus::Ok
     );
     assert!(response.response.members.is_empty(), "no members committed");
-    assert_eq!(backend.head(temp.path()).unwrap().commit, None, "root not committed");
+    assert_eq!(
+        backend.head(temp.path()).unwrap().commit,
+        None,
+        "root not committed"
+    );
 }

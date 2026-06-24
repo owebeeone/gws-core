@@ -24,22 +24,46 @@ fn create_then_list_then_delete() {
     let _fixture = init_one_member_workspace(temp.path(), &backend, "tag-cld-source");
     let member_root = temp.path().join("remote");
 
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Create, Some("v1")), "op").unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Create, Some("v1")),
+        "op",
+    )
+    .unwrap();
     assert!(
-        backend.tag_list(&member_root).unwrap().contains(&"v1".to_owned()),
+        backend
+            .tag_list(&member_root)
+            .unwrap()
+            .contains(&"v1".to_owned()),
         "git tag created in the member"
     );
 
-    let listed = handle_tag(&backend, temp.path(), tag_request(crate::TagOp::List, None), "op").unwrap();
+    let listed = handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::List, None),
+        "op",
+    )
+    .unwrap();
     let tags = listed.tags.expect("list populates tags");
     assert!(
         tags.iter().any(|tag| tag.name == "v1" && tag.members >= 1),
         "v1 listed (a real git ref)"
     );
 
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Delete, Some("v1")), "op").unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Delete, Some("v1")),
+        "op",
+    )
+    .unwrap();
     assert!(
-        !backend.tag_list(&member_root).unwrap().contains(&"v1".to_owned()),
+        !backend
+            .tag_list(&member_root)
+            .unwrap()
+            .contains(&"v1".to_owned()),
         "tag gone after delete"
     );
 }
@@ -49,7 +73,13 @@ fn create_requires_a_name() {
     let temp = TempDir::new("tag-noname");
     let backend = Git2Backend::new();
     let _fixture = init_one_member_workspace(temp.path(), &backend, "tag-noname-source");
-    let err = handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Create, None), "op").unwrap_err();
+    let err = handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Create, None),
+        "op",
+    )
+    .unwrap_err();
     assert_eq!(err.code, crate::model::ErrorCode::InvalidRequest);
 }
 
@@ -61,7 +91,13 @@ fn materialize_tag_restores_the_tagged_commit() {
     let member_root = temp.path().join("remote");
     set_identity(&member_root);
 
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Create, Some("v1")), "op").unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Create, Some("v1")),
+        "op",
+    )
+    .unwrap();
     let tagged = backend.head(&member_root).unwrap().commit.unwrap();
 
     // Advance the member past the tag.
@@ -136,7 +172,13 @@ fn materialize_tag_skips_untagged_members() {
     set_identity(&app);
 
     // Tag both members, then drop the tag from `lib` so only `app` carries it.
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Create, Some("v1")), "op").unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Create, Some("v1")),
+        "op",
+    )
+    .unwrap();
     backend.tag_delete(&lib, "v1").unwrap();
     let tagged = backend.head(&app).unwrap().commit.unwrap();
 
@@ -157,8 +199,16 @@ fn materialize_tag_skips_untagged_members() {
         &events,
     )
     .unwrap();
-    assert_eq!(backend.head(&app).unwrap().commit.unwrap(), tagged, "tagged member restored");
-    assert_eq!(backend.head(&lib).unwrap().commit.unwrap(), lib_head, "untagged member untouched");
+    assert_eq!(
+        backend.head(&app).unwrap().commit.unwrap(),
+        tagged,
+        "tagged member restored"
+    );
+    assert_eq!(
+        backend.head(&lib).unwrap().commit.unwrap(),
+        lib_head,
+        "untagged member untouched"
+    );
 }
 
 #[test]
@@ -167,10 +217,27 @@ fn create_is_idempotent() {
     let backend = Git2Backend::new();
     let _fixture = init_one_member_workspace(temp.path(), &backend, "tag-idem-source");
     let member_root = temp.path().join("remote");
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Create, Some("v1")), "op").unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Create, Some("v1")),
+        "op",
+    )
+    .unwrap();
     // A second create succeeds (skips members already carrying the tag) instead of erroring.
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Create, Some("v1")), "op").unwrap();
-    assert!(backend.tag_list(&member_root).unwrap().contains(&"v1".to_owned()));
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Create, Some("v1")),
+        "op",
+    )
+    .unwrap();
+    assert!(
+        backend
+            .tag_list(&member_root)
+            .unwrap()
+            .contains(&"v1".to_owned())
+    );
 }
 
 #[test]
@@ -188,7 +255,9 @@ fn signed_without_message_is_rejected() {
         all: None,
     };
     assert_eq!(
-        handle_tag(&backend, temp.path(), request, "op").unwrap_err().code,
+        handle_tag(&backend, temp.path(), request, "op")
+            .unwrap_err()
+            .code,
         crate::model::ErrorCode::InvalidRequest
     );
 }
@@ -228,12 +297,32 @@ fn tags_span_the_committed_workspace_root() {
     backend.stage_paths(temp.path(), &["root.txt"]).unwrap();
     backend.commit(temp.path(), "root", false).unwrap();
 
-    handle_tag(&backend, temp.path(), tag_request(crate::TagOp::Create, Some("v1")), "op").unwrap();
+    handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::Create, Some("v1")),
+        "op",
+    )
+    .unwrap();
     assert!(
-        backend.tag_list(temp.path()).unwrap().contains(&"v1".to_owned()),
+        backend
+            .tag_list(temp.path())
+            .unwrap()
+            .contains(&"v1".to_owned()),
         "the workspace root carries the tag"
     );
-    let listed = handle_tag(&backend, temp.path(), tag_request(crate::TagOp::List, None), "op").unwrap();
-    let v1 = listed.tags.unwrap().into_iter().find(|t| t.name == "v1").expect("v1 listed");
+    let listed = handle_tag(
+        &backend,
+        temp.path(),
+        tag_request(crate::TagOp::List, None),
+        "op",
+    )
+    .unwrap();
+    let v1 = listed
+        .tags
+        .unwrap()
+        .into_iter()
+        .find(|t| t.name == "v1")
+        .expect("v1 listed");
     assert_eq!(v1.members, 2, "member + root both carry the tag");
 }

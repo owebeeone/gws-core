@@ -46,7 +46,10 @@ fn stages_pathspec_into_owning_member() {
         response.response.meta.aggregate_status,
         crate::AggregateStatus::Ok
     );
-    assert!(staged(&backend, &member_root, "new.txt"), "new.txt staged in the member");
+    assert!(
+        staged(&backend, &member_root, "new.txt"),
+        "new.txt staged in the member"
+    );
 }
 
 #[test]
@@ -63,7 +66,10 @@ fn stages_root_level_path_in_root_repo() {
         "op_stage",
     )
     .unwrap();
-    assert!(staged(&backend, temp.path(), "root.txt"), "root.txt staged in the root repo");
+    assert!(
+        staged(&backend, temp.path(), "root.txt"),
+        "root.txt staged in the root repo"
+    );
 }
 
 #[test]
@@ -75,9 +81,21 @@ fn dot_at_root_stages_member_and_root() {
     fs::write(member_root.join("a.txt"), "x\n").unwrap();
     fs::write(temp.path().join("root.txt"), "y\n").unwrap();
 
-    handle_stage(&backend, temp.path(), stage_request(temp.path(), &["."], false), "op_stage").unwrap();
-    assert!(staged(&backend, &member_root, "a.txt"), "member file staged");
-    assert!(staged(&backend, temp.path(), "root.txt"), "root file staged");
+    handle_stage(
+        &backend,
+        temp.path(),
+        stage_request(temp.path(), &["."], false),
+        "op_stage",
+    )
+    .unwrap();
+    assert!(
+        staged(&backend, &member_root, "a.txt"),
+        "member file staged"
+    );
+    assert!(
+        staged(&backend, temp.path(), "root.txt"),
+        "root file staged"
+    );
 }
 
 #[test]
@@ -89,9 +107,21 @@ fn all_flag_stages_member_and_root() {
     fs::write(member_root.join("a.txt"), "x\n").unwrap();
     fs::write(temp.path().join("root.txt"), "y\n").unwrap();
 
-    handle_stage(&backend, temp.path(), stage_request(temp.path(), &[], true), "op_stage").unwrap();
-    assert!(staged(&backend, &member_root, "a.txt"), "member file staged via -A");
-    assert!(staged(&backend, temp.path(), "root.txt"), "root file staged via -A");
+    handle_stage(
+        &backend,
+        temp.path(),
+        stage_request(temp.path(), &[], true),
+        "op_stage",
+    )
+    .unwrap();
+    assert!(
+        staged(&backend, &member_root, "a.txt"),
+        "member file staged via -A"
+    );
+    assert!(
+        staged(&backend, temp.path(), "root.txt"),
+        "root file staged via -A"
+    );
 }
 
 #[test]
@@ -130,8 +160,14 @@ fn all_with_member_selection_scopes_to_selected_member() {
     };
     handle_stage(&backend, temp.path(), request, "op_stage").unwrap();
 
-    assert!(staged(&backend, &member_root, "a.txt"), "selected member staged");
-    assert!(!staged(&backend, temp.path(), "root.txt"), "root NOT staged when scoped to a member");
+    assert!(
+        staged(&backend, &member_root, "a.txt"),
+        "selected member staged"
+    );
+    assert!(
+        !staged(&backend, temp.path(), "root.txt"),
+        "root NOT staged when scoped to a member"
+    );
 }
 
 #[test]
@@ -144,8 +180,17 @@ fn dot_skips_unmaterialized_member_but_stages_root() {
     fs::write(temp.path().join("root.txt"), "y\n").unwrap();
 
     // `gwz add .` reaches the member only by fan-out → it is skipped, not an error.
-    handle_stage(&backend, temp.path(), stage_request(temp.path(), &["."], false), "op_stage").unwrap();
-    assert!(staged(&backend, temp.path(), "root.txt"), "root still staged");
+    handle_stage(
+        &backend,
+        temp.path(),
+        stage_request(temp.path(), &["."], false),
+        "op_stage",
+    )
+    .unwrap();
+    assert!(
+        staged(&backend, temp.path(), "root.txt"),
+        "root still staged"
+    );
 }
 
 #[test]

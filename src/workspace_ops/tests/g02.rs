@@ -402,6 +402,7 @@ pub(crate) fn snapshot_write_selected_member_records_with_attribution() {
         crate::SnapshotRequest {
             meta: request_meta_with_actor_selection("agent://tester", &["mem_app"]),
             snapshot_id: "snap_one".to_owned(),
+            source: None,
         },
         "op_snapshot",
     )
@@ -434,6 +435,7 @@ pub(crate) fn snapshot_rejects_a_duplicate_id() {
     let request = || crate::SnapshotRequest {
         meta: request_meta_with_actor_selection("agent://tester", &["mem_app"]),
         snapshot_id: "snap_dup".to_owned(),
+        source: None,
     };
     handle_snapshot(&backend, temp.path(), request(), "op_snap1").unwrap();
     let err = handle_snapshot(&backend, temp.path(), request(), "op_snap2").unwrap_err();
@@ -460,6 +462,7 @@ pub(crate) fn snapshot_records_observed_dirty_state_not_stale_lock() {
         crate::SnapshotRequest {
             meta: request_meta_with_actor_selection("agent://tester", &["mem_app"]),
             snapshot_id: "snap_dirty".to_owned(),
+            source: None,
         },
         "op_snapshot",
     )

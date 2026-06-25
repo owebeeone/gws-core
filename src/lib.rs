@@ -11,6 +11,7 @@ pub mod model;
 pub mod operation;
 pub mod protocol;
 pub mod runtime;
+pub mod stash;
 pub mod status;
 pub mod workspace;
 pub mod workspace_ops;

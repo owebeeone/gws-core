@@ -72,7 +72,99 @@ pub trait GitBackend {
         branch: &str,
         commit: &str,
     ) -> ModelResult<GitUpdateResult>;
+    /// List local branches, sorted by branch name.
+    fn branch_list(&self, _path: &Path) -> ModelResult<Vec<GitBranch>> {
+        Err(ModelError::new(
+            ErrorCode::UnsupportedOperation,
+            "branch_list is not implemented by this GitBackend",
+        ))
+    }
+    /// Create local `branch` at `start_ref`. Existing branch at the same commit
+    /// is a no-op success; existing branch at a different commit is refused.
+    fn branch_create(
+        &self,
+        _path: &Path,
+        _branch: &str,
+        _start_ref: &str,
+    ) -> ModelResult<GitBranchCreateResult> {
+        Err(ModelError::new(
+            ErrorCode::UnsupportedOperation,
+            "branch_create is not implemented by this GitBackend",
+        ))
+    }
+    /// Delete a local branch. Refuses to delete the currently checked-out branch.
+    fn branch_delete(&self, _path: &Path, _branch: &str) -> ModelResult<()> {
+        Err(ModelError::new(
+            ErrorCode::UnsupportedOperation,
+            "branch_delete is not implemented by this GitBackend",
+        ))
+    }
+    /// Check out an existing branch without moving it. Self-verifies HEAD is
+    /// attached to the requested branch.
+    fn switch_branch(&self, _path: &Path, _branch: &str) -> ModelResult<GitUpdateResult> {
+        Err(ModelError::new(
+            ErrorCode::UnsupportedOperation,
+            "switch_branch is not implemented by this GitBackend",
+        ))
+    }
+    /// Save local changes to the native stash stack. The default options are tracked-only.
+    fn stash_push(
+        &self,
+        _path: &Path,
+        _message: &str,
+        _options: GitStashPushOptions,
+    ) -> ModelResult<GitStashPushResult> {
+        Err(ModelError::new(
+            ErrorCode::UnsupportedOperation,
+            "stash_push is not implemented by this GitBackend",
+        ))
+    }
+    /// List native stash entries in stack order (`stash@{0}` first).
+    fn stash_list(&self, _path: &Path) -> ModelResult<Vec<GitStashEntry>> {
+        Err(ModelError::new(
+            ErrorCode::UnsupportedOperation,
+            "stash_list is not implemented by this GitBackend",
+        ))
+    }
+    /// Apply a native stash without dropping it.
+    fn stash_apply(
+        &self,
+        _path: &Path,
+        _target: &GitStashTarget,
+        _options: GitStashRestoreOptions,
+    ) -> ModelResult<()> {
+        Err(ModelError::new(
+            ErrorCode::UnsupportedOperation,
+            "stash_apply is not implemented by this GitBackend",
+        ))
+    }
+    /// Apply a native stash and drop it only if application succeeds.
+    fn stash_pop(
+        &self,
+        _path: &Path,
+        _target: &GitStashTarget,
+        _options: GitStashRestoreOptions,
+    ) -> ModelResult<()> {
+        Err(ModelError::new(
+            ErrorCode::UnsupportedOperation,
+            "stash_pop is not implemented by this GitBackend",
+        ))
+    }
+    /// Drop a native stash entry without applying it.
+    fn stash_drop(&self, _path: &Path, _target: &GitStashTarget) -> ModelResult<()> {
+        Err(ModelError::new(
+            ErrorCode::UnsupportedOperation,
+            "stash_drop is not implemented by this GitBackend",
+        ))
+    }
     fn status(&self, path: &Path) -> ModelResult<GitStatus>;
+    fn status_with_options(
+        &self,
+        path: &Path,
+        _options: GitStatusOptions,
+    ) -> ModelResult<GitStatus> {
+        self.status(path)
+    }
     fn head(&self, path: &Path) -> ModelResult<GitHeadState>;
     fn remotes(&self, path: &Path) -> ModelResult<Vec<GitRemote>>;
     fn add_remote(&self, path: &Path, name: &str, url: &str) -> ModelResult<GitRemoteResult>;
@@ -171,6 +263,112 @@ pub struct GitUpdateResult {
     pub commit: Option<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitBranch {
+    pub name: String,
+    pub commit: String,
+    pub is_current: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitBranchCreateResult {
+    pub branch: GitBranch,
+    pub created: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GitStashPushOptions {
+    pub include_untracked: bool,
+    pub include_ignored: bool,
+    /// Preserve staged index entries in the worktree after pushing, matching
+    /// `git stash push --keep-index`.
+    pub preserve_index: bool,
+}
+
+impl GitStashPushOptions {
+    pub fn tracked_only() -> Self {
+        Self::default()
+    }
+
+    pub fn include_untracked() -> Self {
+        Self {
+            include_untracked: true,
+            ..Self::default()
+        }
+    }
+
+    pub fn include_ignored() -> Self {
+        Self {
+            include_untracked: true,
+            include_ignored: true,
+            ..Self::default()
+        }
+    }
+}
+
+impl Default for GitStashPushOptions {
+    fn default() -> Self {
+        Self {
+            include_untracked: false,
+            include_ignored: false,
+            preserve_index: false,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GitStashRestoreOptions {
+    /// Default restore attempts to reinstate the index (`git stash apply --index`).
+    pub preserve_index: bool,
+}
+
+impl Default for GitStashRestoreOptions {
+    fn default() -> Self {
+        Self {
+            preserve_index: true,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitStashPushResult {
+    pub object_id: String,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct GitStashEntry {
+    pub index: usize,
+    pub object_id: String,
+    pub message: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct GitStashTarget {
+    /// Exact native stash object id. This may target any stash, including non-GWZ stashes.
+    pub object_id: Option<String>,
+    /// GWZ message prefix fallback, e.g. `gwz:stash_123:`. Prefix fallback is
+    /// intentionally restricted to `gwz:` messages so non-GWZ stashes are never
+    /// mutated by fuzzy identity after native indices move.
+    pub gwz_message_prefix: Option<String>,
+}
+
+impl GitStashTarget {
+    pub fn object_id(object_id: impl Into<String>) -> Self {
+        Self {
+            object_id: Some(object_id.into()),
+            gwz_message_prefix: None,
+        }
+    }
+
+    pub fn gwz_message_prefix(prefix: impl Into<String>) -> Self {
+        Self {
+            object_id: None,
+            gwz_message_prefix: Some(prefix.into()),
+        }
+    }
+}
+
 /// Outcome of a merge/rebase integration. A conflict is reported, not errored:
 /// `conflicts` names the paths and `commit` is `None`, with the worktree left
 /// mid-integration for the developer to resolve — exactly as porcelain git leaves it.
@@ -239,6 +437,19 @@ pub struct GitStatus {
 impl GitStatus {
     pub fn clean() -> Self {
         Self::default()
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct GitStatusOptions {
+    pub include_ignored: bool,
+}
+
+impl GitStatusOptions {
+    pub fn include_ignored() -> Self {
+        Self {
+            include_ignored: true,
+        }
     }
 }
 
@@ -600,27 +811,10 @@ impl GitBackend for Git2Backend {
     ) -> ModelResult<GitUpdateResult> {
         let repo = open_repo(path)?;
         let oid = git2::Oid::from_str(commit).map_err(git_error)?;
-        let ref_name = format!("refs/heads/{branch}");
-        // AD3(c) orphan-safety: never silently reset a branch. Create it if missing;
-        // refuse if it already exists at a different commit (that would orphan work).
-        match repo.find_reference(&ref_name) {
-            Ok(existing) => {
-                let existing_oid = existing.peel_to_commit().map_err(git_error)?.id();
-                if existing_oid != oid {
-                    return Err(ModelError::new(
-                        ErrorCode::DivergedMember,
-                        format!(
-                            "branch '{branch}' is at {existing_oid}, not the target {oid}; refusing to move it"
-                        ),
-                    ));
-                }
-            }
-            Err(err) if err.code() == git2::ErrorCode::NotFound => {
-                let target = repo.find_commit(oid).map_err(git_error)?;
-                repo.branch(branch, &target, false).map_err(git_error)?;
-            }
-            Err(err) => return Err(git_error(err)),
-        }
+        let ref_name = branch_ref_name(branch);
+        // AD3(c) orphan-safety: shared with branch_create. Create if missing; refuse
+        // if it already exists at a different commit (that would orphan work).
+        ensure_branch_at_commit(&repo, branch, oid)?;
         let object = repo.find_object(oid, None).map_err(git_error)?;
         let mut checkout = git2::build::CheckoutBuilder::new();
         checkout.safe();
@@ -642,10 +836,164 @@ impl GitBackend for Git2Backend {
         })
     }
 
+    fn branch_list(&self, path: &Path) -> ModelResult<Vec<GitBranch>> {
+        let repo = open_repo(path)?;
+        let current = repo_head(&repo)?.branch;
+        let mut branches = Vec::new();
+        for entry in repo
+            .branches(Some(git2::BranchType::Local))
+            .map_err(git_error)?
+        {
+            let (branch, _) = entry.map_err(git_error)?;
+            branches.push(git_branch_record(&branch, current.as_deref())?);
+        }
+        branches.sort_by(|left, right| left.name.cmp(&right.name));
+        Ok(branches)
+    }
+
+    fn branch_create(
+        &self,
+        path: &Path,
+        branch: &str,
+        start_ref: &str,
+    ) -> ModelResult<GitBranchCreateResult> {
+        let repo = open_repo(path)?;
+        let oid = resolve_commit_oid(&repo, start_ref)?;
+        let created = ensure_branch_at_commit(&repo, branch, oid)?;
+        let current = repo_head(&repo)?.branch;
+        Ok(GitBranchCreateResult {
+            branch: GitBranch {
+                name: branch.to_owned(),
+                commit: oid.to_string(),
+                is_current: current.as_deref() == Some(branch),
+            },
+            created,
+        })
+    }
+
+    fn branch_delete(&self, path: &Path, branch: &str) -> ModelResult<()> {
+        let repo = open_repo(path)?;
+        let current = repo_head(&repo)?.branch;
+        if current.as_deref() == Some(branch) {
+            return Err(ModelError::new(
+                ErrorCode::InvalidRequest,
+                format!("cannot delete current branch '{branch}'"),
+            ));
+        }
+        repo.find_branch(branch, git2::BranchType::Local)
+            .map_err(git_error)?
+            .delete()
+            .map_err(git_error)?;
+        match repo.find_branch(branch, git2::BranchType::Local) {
+            Ok(_) => Err(ModelError::new(
+                ErrorCode::GitCommandFailed,
+                format!("branch '{branch}' still present after delete"),
+            )),
+            Err(err) if err.code() == git2::ErrorCode::NotFound => Ok(()),
+            Err(err) => Err(git_error(err)),
+        }
+    }
+
+    fn switch_branch(&self, path: &Path, branch: &str) -> ModelResult<GitUpdateResult> {
+        let repo = open_repo(path)?;
+        let local_branch = repo
+            .find_branch(branch, git2::BranchType::Local)
+            .map_err(git_error)?;
+        let oid = local_branch.get().peel_to_commit().map_err(git_error)?.id();
+        let object = repo.find_object(oid, None).map_err(git_error)?;
+        let mut checkout = git2::build::CheckoutBuilder::new();
+        checkout.safe();
+        repo.checkout_tree(&object, Some(&mut checkout))
+            .map_err(git_error)?;
+        let ref_name = branch_ref_name(branch);
+        repo.set_head(&ref_name).map_err(git_error)?;
+        verify_checkout_state(path, oid)?;
+        let observed = self.head(path)?;
+        if observed.is_detached || observed.branch.as_deref() != Some(branch) {
+            return Err(ModelError::new(
+                ErrorCode::GitCommandFailed,
+                format!("post-switch HEAD is not on branch '{branch}'"),
+            ));
+        }
+        Ok(GitUpdateResult {
+            updated: true,
+            commit: Some(oid.to_string()),
+        })
+    }
+
+    fn stash_push(
+        &self,
+        path: &Path,
+        message: &str,
+        options: GitStashPushOptions,
+    ) -> ModelResult<GitStashPushResult> {
+        let mut repo = open_repo(path)?;
+        let signature = merge_signature(&repo)?;
+        let object_id = repo
+            .stash_save(&signature, message, Some(stash_push_flags(options)))
+            .map_err(git_error)?;
+        Ok(GitStashPushResult {
+            object_id: object_id.to_string(),
+            message: message.to_owned(),
+        })
+    }
+
+    fn stash_list(&self, path: &Path) -> ModelResult<Vec<GitStashEntry>> {
+        let mut repo = open_repo(path)?;
+        stash_entries(&mut repo)
+    }
+
+    fn stash_apply(
+        &self,
+        path: &Path,
+        target: &GitStashTarget,
+        options: GitStashRestoreOptions,
+    ) -> ModelResult<()> {
+        let mut repo = open_repo(path)?;
+        let index = resolve_stash_index(&mut repo, target)?;
+        let mut apply_options = stash_restore_options(options);
+        // libgit2 applies through its merge/checkout machinery and can return
+        // Conflict without writing porcelain-style conflict markers. Until GWZ
+        // has stash-specific protocol errors, callers should treat GitCommandFailed
+        // from this path as "native stash remains pending; inspect before retry".
+        repo.stash_apply(index, Some(&mut apply_options))
+            .map_err(stash_restore_error)
+    }
+
+    fn stash_pop(
+        &self,
+        path: &Path,
+        target: &GitStashTarget,
+        options: GitStashRestoreOptions,
+    ) -> ModelResult<()> {
+        let mut repo = open_repo(path)?;
+        let index = resolve_stash_index(&mut repo, target)?;
+        let mut apply_options = stash_restore_options(options);
+        // Same conflict caveat as stash_apply: git2 does not guarantee porcelain
+        // conflict-marker behavior. git_stash_pop drops only after a successful apply.
+        repo.stash_pop(index, Some(&mut apply_options))
+            .map_err(stash_restore_error)
+    }
+
+    fn stash_drop(&self, path: &Path, target: &GitStashTarget) -> ModelResult<()> {
+        let mut repo = open_repo(path)?;
+        let index = resolve_stash_index(&mut repo, target)?;
+        repo.stash_drop(index).map_err(git_error)
+    }
+
     fn status(&self, path: &Path) -> ModelResult<GitStatus> {
+        self.status_with_options(path, GitStatusOptions::default())
+    }
+
+    fn status_with_options(
+        &self,
+        path: &Path,
+        options: GitStatusOptions,
+    ) -> ModelResult<GitStatus> {
         let repo = open_repo(path)?;
         let mut opts = git2::StatusOptions::new();
         opts.include_untracked(true)
+            .include_ignored(options.include_ignored)
             .recurse_untracked_dirs(true)
             // F17: detect renames so a `git mv` reports `R` + original_path (the status
             // model already carries `original_path`) instead of an unrelated delete+add.
@@ -926,6 +1274,165 @@ impl GitBackend for Git2Backend {
 
 pub(crate) fn open_repo(path: &Path) -> ModelResult<git2::Repository> {
     git2::Repository::open(path).map_err(git_error)
+}
+
+pub(crate) fn branch_ref_name(branch: &str) -> String {
+    format!("refs/heads/{branch}")
+}
+
+pub(crate) fn resolve_commit_oid(
+    repo: &git2::Repository,
+    ref_spec: &str,
+) -> ModelResult<git2::Oid> {
+    repo.revparse_single(ref_spec)
+        .and_then(|object| object.peel_to_commit())
+        .map(|commit| commit.id())
+        .map_err(git_error)
+}
+
+/// Create `branch` at `oid` when missing. If it exists, require it already points
+/// at `oid`; refusing to move an existing branch preserves the checkout_branch
+/// orphan-safety behavior used by materialize branch restore.
+pub(crate) fn ensure_branch_at_commit(
+    repo: &git2::Repository,
+    branch: &str,
+    oid: git2::Oid,
+) -> ModelResult<bool> {
+    let ref_name = branch_ref_name(branch);
+    match repo.find_reference(&ref_name) {
+        Ok(existing) => {
+            let existing_oid = existing.peel_to_commit().map_err(git_error)?.id();
+            if existing_oid != oid {
+                return Err(ModelError::new(
+                    ErrorCode::DivergedMember,
+                    format!(
+                        "branch '{branch}' is at {existing_oid}, not the target {oid}; refusing to move it"
+                    ),
+                ));
+            }
+            Ok(false)
+        }
+        Err(err) if err.code() == git2::ErrorCode::NotFound => {
+            let target = repo.find_commit(oid).map_err(git_error)?;
+            repo.branch(branch, &target, false).map_err(git_error)?;
+            Ok(true)
+        }
+        Err(err) => Err(git_error(err)),
+    }
+}
+
+pub(crate) fn git_branch_record(
+    branch: &git2::Branch<'_>,
+    current: Option<&str>,
+) -> ModelResult<GitBranch> {
+    let name = branch
+        .name()
+        .map_err(git_error)?
+        .ok_or_else(|| ModelError::new(ErrorCode::GitCommandFailed, "branch name is not UTF-8"))?
+        .to_owned();
+    let commit = branch
+        .get()
+        .peel_to_commit()
+        .map_err(git_error)?
+        .id()
+        .to_string();
+    Ok(GitBranch {
+        is_current: current == Some(name.as_str()),
+        name,
+        commit,
+    })
+}
+
+pub(crate) fn stash_push_flags(options: GitStashPushOptions) -> git2::StashFlags {
+    let mut flags = git2::StashFlags::empty();
+    if options.preserve_index {
+        flags |= git2::StashFlags::KEEP_INDEX;
+    }
+    if options.include_untracked {
+        flags |= git2::StashFlags::INCLUDE_UNTRACKED;
+    }
+    if options.include_ignored {
+        flags |= git2::StashFlags::INCLUDE_UNTRACKED;
+        flags |= git2::StashFlags::INCLUDE_IGNORED;
+    }
+    flags
+}
+
+pub(crate) fn stash_restore_options(
+    options: GitStashRestoreOptions,
+) -> git2::StashApplyOptions<'static> {
+    let mut apply_options = git2::StashApplyOptions::new();
+    if options.preserve_index {
+        apply_options.reinstantiate_index();
+    }
+    apply_options
+}
+
+pub(crate) fn stash_entries(repo: &mut git2::Repository) -> ModelResult<Vec<GitStashEntry>> {
+    let mut entries = Vec::new();
+    repo.stash_foreach(|index, message, oid| {
+        entries.push(GitStashEntry {
+            index,
+            object_id: oid.to_string(),
+            message: message.to_owned(),
+        });
+        true
+    })
+    .map_err(git_error)?;
+    Ok(entries)
+}
+
+pub(crate) fn resolve_stash_index(
+    repo: &mut git2::Repository,
+    target: &GitStashTarget,
+) -> ModelResult<usize> {
+    let entries = stash_entries(repo)?;
+    if let Some(object_id) = target.object_id.as_deref() {
+        let oid = git2::Oid::from_str(object_id).map_err(git_error)?;
+        if let Some(entry) = entries
+            .iter()
+            .find(|entry| entry.object_id == oid.to_string())
+        {
+            return Ok(entry.index);
+        }
+    }
+
+    if let Some(prefix) = target.gwz_message_prefix.as_deref() {
+        if !prefix.starts_with("gwz:") {
+            return Err(ModelError::new(
+                ErrorCode::InvalidRequest,
+                "stash message prefix fallback is restricted to gwz: prefixes",
+            ));
+        }
+        if let Some(entry) = entries
+            .iter()
+            .find(|entry| stash_message_matches_gwz_prefix(&entry.message, prefix))
+        {
+            return Ok(entry.index);
+        }
+    }
+
+    Err(ModelError::new(
+        ErrorCode::GitCommandFailed,
+        "stash entry not found",
+    ))
+}
+
+pub(crate) fn stash_restore_error(error: git2::Error) -> ModelError {
+    match error.code() {
+        git2::ErrorCode::Conflict => ModelError::new(
+            ErrorCode::GitCommandFailed,
+            format!("stash restore conflict: {}", error.message()),
+        ),
+        _ => git_error(error),
+    }
+}
+
+pub(crate) fn stash_message_matches_gwz_prefix(message: &str, prefix: &str) -> bool {
+    message.starts_with(prefix)
+        || message
+            .split_once(": ")
+            .is_some_and(|(_, suffix)| suffix.starts_with(prefix))
 }
 
 /// Set libgit2's server (SSH/network) read timeout, process-wide, in milliseconds.

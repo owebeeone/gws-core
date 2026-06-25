@@ -3,12 +3,16 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use gwz_core::{
-    ActionKind, AggregateStatus, EventKind, GitBranchDifference, GitBranchGroup, GitFileChange,
-    GitMemberBranchStatus, GitObjectIdentity, GwzError, GwzErrorCode, MemberResponse, MemberStatus,
-    OperationActor, OperationAttribution, OperationEvent, RepoSyncRequest, RepoSyncResponse,
-    RequestMeta, ResponseEnvelope, ResponseMeta, Severity, SourceKind, StatusMode, StatusPathStyle,
-    StatusRequest, StatusResponse, WorkspaceGitStatus, WorkspaceRootFileChange,
-    WorkspaceRootGitStatus, decode, encode,
+    ActionKind, AggregateStatus, BranchActionResult, BranchOp, BranchRepoSummary, BranchRequest,
+    BranchResponse, EventKind, GitBranchDifference, GitBranchGroup, GitFileChange,
+    GitMemberBranchStatus, GitObjectIdentity, GwzError, GwzErrorCode, MaterializeRequest,
+    MaterializeTarget, MaterializeTargetKind, MemberResponse, MemberStatus, OperationActor,
+    OperationAttribution, OperationEvent, RepoSyncRequest, RepoSyncResponse, RequestMeta,
+    ResponseEnvelope, ResponseMeta, Severity, SnapshotRequest, SnapshotSource, SnapshotSourceKind,
+    SourceKind, StashBundle, StashBundleMember, StashDirtySummary, StashDrift, StashErrorDetail,
+    StashOp, StashParticipation, StashPushLifecycle, StashRequest, StashResponse,
+    StashRestoreState, StashWarning, StatusMode, StatusPathStyle, StatusRequest, StatusResponse,
+    WorkspaceGitStatus, WorkspaceRootFileChange, WorkspaceRootGitStatus, decode, encode,
 };
 
 fn round_trip<T>(
@@ -78,6 +82,256 @@ fn repo_sync_request_and_response_round_trip() {
             RepoSyncResponse::from_cbor
         ),
         response
+    );
+}
+
+#[test]
+fn stash_requests_round_trip_for_all_s3_ops() {
+    let requests = vec![
+        StashRequest {
+            meta: request_meta("req-stash-push"),
+            op: StashOp::Push,
+            stash_id: None,
+            message: Some("save protocol work".to_owned()),
+            include_untracked: Some(true),
+            include_ignored: Some(false),
+            expanded: None,
+            preserve_index: None,
+        },
+        StashRequest {
+            meta: request_meta("req-stash-list"),
+            op: StashOp::List,
+            stash_id: None,
+            message: None,
+            include_untracked: None,
+            include_ignored: None,
+            expanded: Some(true),
+            preserve_index: None,
+        },
+        StashRequest {
+            meta: request_meta("req-stash-apply"),
+            op: StashOp::Apply,
+            stash_id: Some("stash_20260625_000001".to_owned()),
+            message: None,
+            include_untracked: None,
+            include_ignored: None,
+            expanded: None,
+            preserve_index: Some(true),
+        },
+        StashRequest {
+            meta: request_meta("req-stash-pop"),
+            op: StashOp::Pop,
+            stash_id: Some("stash_20260625_000001".to_owned()),
+            message: None,
+            include_untracked: None,
+            include_ignored: None,
+            expanded: None,
+            preserve_index: Some(true),
+        },
+        StashRequest {
+            meta: request_meta("req-stash-drop"),
+            op: StashOp::Drop,
+            stash_id: Some("stash_20260625_000001".to_owned()),
+            message: None,
+            include_untracked: None,
+            include_ignored: None,
+            expanded: None,
+            preserve_index: None,
+        },
+    ];
+
+    for request in requests {
+        assert_eq!(
+            round_trip(&request, StashRequest::to_cbor, StashRequest::from_cbor),
+            request
+        );
+    }
+}
+
+#[test]
+fn stash_response_round_trips_bundle_projection() {
+    let response = StashResponse {
+        response: response_envelope("req-stash-list", ActionKind::Stash),
+        bundles: Some(vec![stash_bundle()]),
+    };
+
+    assert_eq!(
+        round_trip(&response, StashResponse::to_cbor, StashResponse::from_cbor),
+        response
+    );
+}
+
+#[test]
+fn branch_requests_round_trip_for_b4a_ops() {
+    let requests = vec![
+        BranchRequest {
+            meta: request_meta("req-branch-list"),
+            op: BranchOp::List,
+            name: None,
+            start_ref: None,
+            switch_after_create: None,
+        },
+        BranchRequest {
+            meta: request_meta("req-branch-create"),
+            op: BranchOp::Create,
+            name: Some("feature/protocol".to_owned()),
+            start_ref: Some("HEAD".to_owned()),
+            switch_after_create: Some(true),
+        },
+        BranchRequest {
+            meta: request_meta("req-branch-delete"),
+            op: BranchOp::Delete,
+            name: Some("feature/protocol".to_owned()),
+            start_ref: None,
+            switch_after_create: None,
+        },
+    ];
+
+    for request in requests {
+        assert_eq!(
+            round_trip(&request, BranchRequest::to_cbor, BranchRequest::from_cbor),
+            request
+        );
+    }
+}
+
+#[test]
+fn branch_response_round_trips_repo_summary() {
+    let response = BranchResponse {
+        response: response_envelope("req-branch-list", ActionKind::Branch),
+        repos: Some(vec![
+            branch_repo_summary("mem_core", BranchActionResult::Listed),
+            branch_repo_summary("mem_cli", BranchActionResult::Created),
+            branch_repo_summary("mem_docs", BranchActionResult::Deleted),
+        ]),
+    };
+
+    assert_eq!(
+        round_trip(
+            &response,
+            BranchResponse::to_cbor,
+            BranchResponse::from_cbor
+        ),
+        response
+    );
+}
+
+#[test]
+fn branch_response_round_trips_clean_merge_summary() {
+    let response = BranchResponse {
+        response: response_envelope("req-branch-merge-clean", ActionKind::Branch),
+        repos: Some(vec![BranchRepoSummary {
+            result: BranchActionResult::Merged,
+            source_ref: Some("feature/protocol".to_owned()),
+            target_branch: Some("main".to_owned()),
+            resulting_commit: Some("2222222222222222222222222222222222222222".to_owned()),
+            conflict_paths: Vec::new(),
+            ..branch_repo_summary("mem_core", BranchActionResult::Merged)
+        }]),
+    };
+
+    assert_eq!(
+        round_trip(
+            &response,
+            BranchResponse::to_cbor,
+            BranchResponse::from_cbor
+        ),
+        response
+    );
+}
+
+#[test]
+fn branch_response_round_trips_conflicted_merge_summary() {
+    let mut envelope = response_envelope("req-branch-merge-conflict", ActionKind::Branch);
+    envelope.meta.aggregate_status = AggregateStatus::Conflicted;
+
+    let response = BranchResponse {
+        response: envelope,
+        repos: Some(vec![
+            BranchRepoSummary {
+                result: BranchActionResult::Merged,
+                source_ref: Some("feature/protocol".to_owned()),
+                target_branch: Some("main".to_owned()),
+                resulting_commit: Some("2222222222222222222222222222222222222222".to_owned()),
+                conflict_paths: Vec::new(),
+                ..branch_repo_summary("mem_core", BranchActionResult::Merged)
+            },
+            BranchRepoSummary {
+                result: BranchActionResult::Conflicted,
+                source_ref: Some("feature/protocol".to_owned()),
+                target_branch: Some("main".to_owned()),
+                resulting_commit: None,
+                conflict_paths: vec!["src/lib.rs".to_owned(), "Cargo.toml".to_owned()],
+                ..branch_repo_summary("mem_cli", BranchActionResult::Conflicted)
+            },
+        ]),
+    };
+
+    assert_eq!(
+        round_trip(
+            &response,
+            BranchResponse::to_cbor,
+            BranchResponse::from_cbor
+        ),
+        response
+    );
+}
+
+#[test]
+fn branch_materialize_target_round_trips() {
+    let request = MaterializeRequest {
+        meta: request_meta("req-materialize-branch"),
+        target: MaterializeTarget {
+            kind: MaterializeTargetKind::Branch,
+            name: Some("feature/protocol".to_owned()),
+            commit: None,
+        },
+    };
+
+    assert_eq!(
+        round_trip(
+            &request,
+            MaterializeRequest::to_cbor,
+            MaterializeRequest::from_cbor
+        ),
+        request
+    );
+}
+
+#[test]
+fn snapshot_sources_round_trip() {
+    let current = SnapshotRequest {
+        meta: request_meta("req-snapshot-current"),
+        snapshot_id: "snap-current".to_owned(),
+        source: Some(SnapshotSource {
+            kind: SnapshotSourceKind::Current,
+            branch: None,
+        }),
+    };
+    assert_eq!(
+        round_trip(
+            &current,
+            SnapshotRequest::to_cbor,
+            SnapshotRequest::from_cbor
+        ),
+        current
+    );
+
+    let branch = SnapshotRequest {
+        meta: request_meta("req-snapshot-branch"),
+        snapshot_id: "snap-feature".to_owned(),
+        source: Some(SnapshotSource {
+            kind: SnapshotSourceKind::Branch,
+            branch: Some("feature/protocol".to_owned()),
+        }),
+    };
+    assert_eq!(
+        round_trip(
+            &branch,
+            SnapshotRequest::to_cbor,
+            SnapshotRequest::from_cbor
+        ),
+        branch
     );
 }
 
@@ -237,6 +491,59 @@ fn error_code_wire_values_are_pinned() {
     assert_eq!(GwzErrorCode::DivergedMember.wire(), 16);
     assert_eq!(GwzErrorCode::AttributionDenied.wire(), 26);
     assert_eq!(GwzErrorCode::InternalError.wire(), 29);
+    assert_eq!(GwzErrorCode::BranchDetachedHead.wire(), 30);
+    assert_eq!(GwzErrorCode::BranchUnbornHead.wire(), 31);
+    assert_eq!(GwzErrorCode::BranchMixed.wire(), 32);
+    assert_eq!(GwzErrorCode::StashNotFound.wire(), 33);
+    assert_eq!(GwzErrorCode::StashIncomplete.wire(), 34);
+    assert_eq!(GwzErrorCode::StashConflict.wire(), 35);
+}
+
+#[test]
+fn branch_protocol_wire_values_are_pinned() {
+    assert_eq!(ActionKind::Stash.wire(), 17);
+    assert_eq!(ActionKind::Branch.wire(), 18);
+    assert_eq!(MaterializeTargetKind::Lock.wire(), 0);
+    assert_eq!(MaterializeTargetKind::Commit.wire(), 4);
+    assert_eq!(MaterializeTargetKind::Branch.wire(), 5);
+    assert_eq!(SnapshotSourceKind::Current.wire(), 0);
+    assert_eq!(SnapshotSourceKind::Branch.wire(), 1);
+    assert_eq!(BranchOp::List.wire(), 0);
+    assert_eq!(BranchOp::Create.wire(), 1);
+    assert_eq!(BranchOp::Delete.wire(), 2);
+    assert_eq!(BranchOp::Merge.wire(), 3);
+    assert_eq!(BranchActionResult::Listed.wire(), 0);
+    assert_eq!(BranchActionResult::Created.wire(), 1);
+    assert_eq!(BranchActionResult::Exists.wire(), 2);
+    assert_eq!(BranchActionResult::Deleted.wire(), 3);
+    assert_eq!(BranchActionResult::Switched.wire(), 4);
+    assert_eq!(BranchActionResult::Noop.wire(), 5);
+    assert_eq!(BranchActionResult::Skipped.wire(), 6);
+    assert_eq!(BranchActionResult::Merged.wire(), 7);
+    assert_eq!(BranchActionResult::Conflicted.wire(), 8);
+}
+
+#[test]
+fn stash_protocol_wire_values_are_pinned() {
+    assert_eq!(StashOp::Push.wire(), 0);
+    assert_eq!(StashOp::List.wire(), 1);
+    assert_eq!(StashOp::Apply.wire(), 2);
+    assert_eq!(StashOp::Pop.wire(), 3);
+    assert_eq!(StashOp::Drop.wire(), 4);
+    assert_eq!(StashParticipation::Stashed.wire(), 0);
+    assert_eq!(StashParticipation::Empty.wire(), 1);
+    assert_eq!(StashParticipation::Skipped.wire(), 2);
+    assert_eq!(StashPushLifecycle::Unattempted.wire(), 0);
+    assert_eq!(StashPushLifecycle::Saving.wire(), 1);
+    assert_eq!(StashPushLifecycle::Saved.wire(), 2);
+    assert_eq!(StashPushLifecycle::Empty.wire(), 3);
+    assert_eq!(StashPushLifecycle::Failed.wire(), 4);
+    assert_eq!(StashRestoreState::Pending.wire(), 0);
+    assert_eq!(StashRestoreState::Applied.wire(), 1);
+    assert_eq!(StashRestoreState::Popped.wire(), 2);
+    assert_eq!(StashRestoreState::Dropped.wire(), 3);
+    assert_eq!(StashRestoreState::Noop.wire(), 4);
+    assert_eq!(StashRestoreState::Missing.wire(), 5);
 }
 
 #[test]
@@ -348,6 +655,115 @@ fn attribution() -> OperationAttribution {
             timezone_offset_minutes: Some(600),
         }),
         credential_ref: Some("cred:test".to_owned()),
+    }
+}
+
+fn request_meta(request_id: &str) -> RequestMeta {
+    RequestMeta {
+        request_id: request_id.to_owned(),
+        schema_version: "gwz.v0".to_owned(),
+        ..RequestMeta::default()
+    }
+}
+
+fn response_envelope(request_id: &str, action: ActionKind) -> ResponseEnvelope {
+    ResponseEnvelope {
+        meta: ResponseMeta {
+            request_id: request_id.to_owned(),
+            schema_version: "gwz.v0".to_owned(),
+            action,
+            aggregate_status: AggregateStatus::Ok,
+            ..ResponseMeta::default()
+        },
+        members: Vec::new(),
+        errors: Vec::new(),
+    }
+}
+
+fn stash_bundle() -> StashBundle {
+    StashBundle {
+        schema: "gwz.stash-bundle/v0".to_owned(),
+        workspace_id: "ws_protocol".to_owned(),
+        stash_id: "stash_20260625_000001".to_owned(),
+        created_at: "2026-06-25T00:00:00Z".to_owned(),
+        message_suffix: "save protocol work".to_owned(),
+        include_untracked: true,
+        include_ignored: false,
+        selected_members: vec!["mem_core".to_owned(), "mem_cli".to_owned()],
+        members: vec![
+            StashBundleMember {
+                member_id: "mem_core".to_owned(),
+                path: "repos/core".to_owned(),
+                participation: StashParticipation::Stashed,
+                push_lifecycle: StashPushLifecycle::Saved,
+                restore_state: StashRestoreState::Pending,
+                branch_before: Some("main".to_owned()),
+                head_before: Some("0123456789abcdef0123456789abcdef01234567".to_owned()),
+                full_stash_message: "gwz:stash_20260625_000001: save protocol work".to_owned(),
+                dirty_summary: StashDirtySummary {
+                    staged: true,
+                    unstaged: true,
+                    untracked: true,
+                    ignored: false,
+                },
+                native_stash_object_id: Some("fedcba9876543210fedcba9876543210fedcba98".to_owned()),
+                native_stash_display_ref: Some("stash@{0}".to_owned()),
+                error: None,
+            },
+            StashBundleMember {
+                member_id: "mem_cli".to_owned(),
+                path: "repos/cli".to_owned(),
+                participation: StashParticipation::Stashed,
+                push_lifecycle: StashPushLifecycle::Failed,
+                restore_state: StashRestoreState::Missing,
+                branch_before: Some("main".to_owned()),
+                head_before: Some("1111111111111111111111111111111111111111".to_owned()),
+                full_stash_message: "gwz:stash_20260625_000001: save protocol work".to_owned(),
+                dirty_summary: StashDirtySummary {
+                    staged: false,
+                    unstaged: true,
+                    untracked: false,
+                    ignored: false,
+                },
+                native_stash_object_id: None,
+                native_stash_display_ref: None,
+                error: Some(StashErrorDetail {
+                    code: "git_command_failed".to_owned(),
+                    message: "native stash failed".to_owned(),
+                }),
+            },
+        ],
+        warnings: vec![StashWarning {
+            code: "partial_push".to_owned(),
+            message: "one member failed".to_owned(),
+            member_id: Some("mem_cli".to_owned()),
+        }],
+        drift: vec![StashDrift {
+            code: "missing_native_stash".to_owned(),
+            message: "native stash payload is missing".to_owned(),
+            member_id: "mem_cli".to_owned(),
+        }],
+    }
+}
+
+fn branch_repo_summary(member_id: &str, result: BranchActionResult) -> BranchRepoSummary {
+    BranchRepoSummary {
+        member_id: member_id.to_owned(),
+        member_path: format!("repos/{member_id}"),
+        source_kind: SourceKind::Git,
+        result,
+        branch: Some("feature/protocol".to_owned()),
+        current_branch: Some("main".to_owned()),
+        detached: false,
+        unborn: false,
+        head: Some("0123456789abcdef0123456789abcdef01234567".to_owned()),
+        upstream: Some("origin/main".to_owned()),
+        ahead: Some(1),
+        behind: Some(0),
+        source_ref: None,
+        target_branch: None,
+        resulting_commit: None,
+        conflict_paths: Vec::new(),
     }
 }
 

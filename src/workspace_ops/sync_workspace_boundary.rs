@@ -4,7 +4,7 @@ use std::path::Path;
 use crate::artifact::LockArtifact;
 use crate::git::GitBackend;
 use crate::model::ModelResult;
-use crate::workspace::WORKSPACE_DIR;
+use crate::workspace::{RUNTIME_DIR, WORKSPACE_DIR};
 
 use super::*;
 
@@ -12,10 +12,10 @@ const EXCLUDE_BEGIN: &str = "# BEGIN GWZ managed member repositories";
 const EXCLUDE_END: &str = "# END GWZ managed member repositories";
 
 /// Refresh the workspace git boundary and stage the workspace metadata. gwz hides member
-/// repos and its tmp dir from the ROOT repo via a managed block in `.git/info/exclude` —
-/// local, never committed, regenerated on every run (we don't persist it). Members are
-/// therefore untracked; `gwz.yml` / `gwz.lock.yml` is the authoritative record of member
-/// state. (Supersedes the gitlink boundary.)
+/// repos, its tmp dir, and local runtime state from the ROOT repo via a managed block in
+/// `.git/info/exclude`: local, never committed, regenerated on every run (we don't persist
+/// it). Members are therefore untracked; `gwz.yml` / `gwz.lock.yml` is the authoritative
+/// record of member state. (Supersedes the gitlink boundary.)
 pub(crate) fn sync_workspace_boundary<B: GitBackend>(
     backend: &B,
     root: &Path,
@@ -26,14 +26,18 @@ pub(crate) fn sync_workspace_boundary<B: GitBackend>(
 }
 
 /// Regenerate gwz's managed block in `<root>/.git/info/exclude` so the root repo ignores
-/// `/{WORKSPACE_DIR}/.tmp/` and every member path. Idempotent, preserves any non-gwz
-/// lines, and is purely local (never committed) — rebuilt from the lock on each run.
+/// `/{RUNTIME_DIR}/`, `/{WORKSPACE_DIR}/.tmp/`, and every member path. Idempotent, preserves any
+/// non-gwz lines, and is purely local (never committed), rebuilt from the lock on each run.
 pub(crate) fn ensure_workspace_exclude(root: &Path, lock: &LockArtifact) -> ModelResult<()> {
     let mut paths: Vec<&str> = lock.members.values().map(|m| m.path.as_str()).collect();
     paths.sort_unstable();
     paths.dedup();
 
-    let mut lines = vec![EXCLUDE_BEGIN.to_owned(), format!("/{WORKSPACE_DIR}/.tmp/")];
+    let mut lines = vec![
+        EXCLUDE_BEGIN.to_owned(),
+        format!("/{RUNTIME_DIR}/"),
+        format!("/{WORKSPACE_DIR}/.tmp/"),
+    ];
     lines.extend(paths.into_iter().map(|path| format!("/{path}/")));
     lines.push(EXCLUDE_END.to_owned());
     let block = lines.join("\n");

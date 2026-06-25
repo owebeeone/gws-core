@@ -30,6 +30,8 @@ API and from workspace artifact YAML schemas.
 | GwzCore | pull_head | in | unary | request: PullHeadRequest | value: PullHeadResponse |
 | GwzCore | pull_snapshot | in | unary | request: PullSnapshotRequest | value: PullSnapshotResponse |
 | GwzCore | push | in | unary | request: PushRequest | value: PushResponse |
+| GwzCore | stash | in | unary | request: StashRequest | value: StashResponse |
+| GwzCore | branch | in | unary | request: BranchRequest | value: BranchResponse |
 | GwzCore | events.subscribe | out | log | operation_id: str | append: OperationEvent |
 | GwzCore | operation.result | out | unary | operation_id: str | value: OperationResult |
 
@@ -59,6 +61,8 @@ has no service method and no handler that executes commands.
 | PullHeadRequest | PullHeadResponse | workspace_ops::handle_pull_head | pull | core service |
 | PullSnapshotRequest | PullSnapshotResponse | workspace_ops::handle_pull_snapshot | pull | core service |
 | PushRequest | PushResponse | workspace_ops::handle_push | push | core service |
+| StashRequest | StashResponse | workspace_ops::handle_stash | stash | core service |
+| BranchRequest | BranchResponse | workspace_ops::handle_branch | branch | core service |
 | ExecRequest | ExecResponse | none | forall | CLI-local support data |
 
 ## Enums
@@ -84,6 +88,8 @@ has no service method and no handler that executes commands.
 | ls | 14 |
 | forall | 15 |
 | repo_sync | 16 |
+| stash | 17 |
+| branch | 18 |
 
 ### TagOp
 
@@ -94,6 +100,68 @@ has no service method and no handler that executes commands.
 | fetch | 2 |
 | push | 3 |
 | delete | 4 |
+
+### StashOp
+
+| Member | Wire |
+| --- | --- |
+| push | 0 |
+| list | 1 |
+| apply | 2 |
+| pop | 3 |
+| drop | 4 |
+
+### StashParticipation
+
+| Member | Wire |
+| --- | --- |
+| stashed | 0 |
+| empty | 1 |
+| skipped | 2 |
+
+### StashPushLifecycle
+
+| Member | Wire |
+| --- | --- |
+| unattempted | 0 |
+| saving | 1 |
+| saved | 2 |
+| empty | 3 |
+| failed | 4 |
+
+### StashRestoreState
+
+| Member | Wire |
+| --- | --- |
+| pending | 0 |
+| applied | 1 |
+| popped | 2 |
+| dropped | 3 |
+| noop | 4 |
+| missing | 5 |
+
+### BranchOp
+
+| Member | Wire |
+| --- | --- |
+| list | 0 |
+| create | 1 |
+| delete | 2 |
+| merge | 3 |
+
+### BranchActionResult
+
+| Member | Wire |
+| --- | --- |
+| listed | 0 |
+| created | 1 |
+| exists | 2 |
+| deleted | 3 |
+| switched | 4 |
+| noop | 5 |
+| skipped | 6 |
+| merged | 7 |
+| conflicted | 8 |
 
 ### ExecMode
 
@@ -146,6 +214,14 @@ has no service method and no handler that executes commands.
 | snapshot | 2 |
 | tag | 3 |
 | commit | 4 |
+| branch | 5 |
+
+### SnapshotSourceKind
+
+| Member | Wire |
+| --- | --- |
+| current | 0 |
+| branch | 1 |
 
 ### SyncBehavior
 
@@ -289,6 +365,12 @@ has no service method and no handler that executes commands.
 | permission_denied | 27 |
 | io_error | 28 |
 | internal_error | 29 |
+| branch_detached_head | 30 |
+| branch_unborn_head | 31 |
+| branch_mixed | 32 |
+| stash_not_found | 33 |
+| stash_incomplete | 34 |
+| stash_conflict | 35 |
 
 ## Messages
 
@@ -428,6 +510,13 @@ has no service method and no handler that executes commands.
 | name | 2 | str | yes | no | - |
 | commit | 3 | str | yes | no | - |
 
+### SnapshotSource
+
+| Field | Tag | Type | Optional | Transient | Merge |
+| --- | --- | --- | --- | --- | --- |
+| kind | 1 | SnapshotSourceKind | no | no | - |
+| branch | 2 | str | yes | no | - |
+
 ### ResolvedMemberState
 
 | Field | Tag | Type | Optional | Transient | Merge |
@@ -550,6 +639,92 @@ has no service method and no handler that executes commands.
 | branch_differences | 5 | List<GitBranchDifference> | no | no | - |
 | root_status | 6 | WorkspaceRootGitStatus | yes | no | - |
 | root_file_changes | 7 | List<WorkspaceRootFileChange> | no | no | - |
+
+### StashDirtySummary
+
+| Field | Tag | Type | Optional | Transient | Merge |
+| --- | --- | --- | --- | --- | --- |
+| staged | 1 | bool | no | no | - |
+| unstaged | 2 | bool | no | no | - |
+| untracked | 3 | bool | no | no | - |
+| ignored | 4 | bool | no | no | - |
+
+### StashErrorDetail
+
+| Field | Tag | Type | Optional | Transient | Merge |
+| --- | --- | --- | --- | --- | --- |
+| code | 1 | str | no | no | - |
+| message | 2 | str | no | no | - |
+
+### StashWarning
+
+| Field | Tag | Type | Optional | Transient | Merge |
+| --- | --- | --- | --- | --- | --- |
+| code | 1 | str | no | no | - |
+| message | 2 | str | no | no | - |
+| member_id | 3 | str | yes | no | - |
+
+### StashDrift
+
+| Field | Tag | Type | Optional | Transient | Merge |
+| --- | --- | --- | --- | --- | --- |
+| code | 1 | str | no | no | - |
+| message | 2 | str | no | no | - |
+| member_id | 3 | str | no | no | - |
+
+### StashBundleMember
+
+| Field | Tag | Type | Optional | Transient | Merge |
+| --- | --- | --- | --- | --- | --- |
+| member_id | 1 | str | no | no | - |
+| path | 2 | str | no | no | - |
+| participation | 3 | StashParticipation | no | no | - |
+| push_lifecycle | 4 | StashPushLifecycle | no | no | - |
+| restore_state | 5 | StashRestoreState | no | no | - |
+| branch_before | 6 | str | yes | no | - |
+| head_before | 7 | str | yes | no | - |
+| full_stash_message | 8 | str | no | no | - |
+| dirty_summary | 9 | StashDirtySummary | no | no | - |
+| native_stash_object_id | 10 | str | yes | no | - |
+| native_stash_display_ref | 11 | str | yes | no | - |
+| error | 12 | StashErrorDetail | yes | no | - |
+
+### StashBundle
+
+| Field | Tag | Type | Optional | Transient | Merge |
+| --- | --- | --- | --- | --- | --- |
+| schema | 1 | str | no | no | - |
+| workspace_id | 2 | str | no | no | - |
+| stash_id | 3 | str | no | no | - |
+| created_at | 4 | str | no | no | - |
+| message_suffix | 5 | str | no | no | - |
+| include_untracked | 6 | bool | no | no | - |
+| include_ignored | 7 | bool | no | no | - |
+| members | 8 | List<StashBundleMember> | no | no | - |
+| warnings | 9 | List<StashWarning> | no | no | - |
+| drift | 10 | List<StashDrift> | no | no | - |
+| selected_members | 11 | List<str> | no | no | - |
+
+### BranchRepoSummary
+
+| Field | Tag | Type | Optional | Transient | Merge |
+| --- | --- | --- | --- | --- | --- |
+| member_id | 1 | str | no | no | - |
+| member_path | 2 | str | no | no | - |
+| source_kind | 3 | SourceKind | no | no | - |
+| result | 4 | BranchActionResult | no | no | - |
+| branch | 5 | str | yes | no | - |
+| current_branch | 6 | str | yes | no | - |
+| detached | 7 | bool | no | no | - |
+| unborn | 8 | bool | no | no | - |
+| head | 9 | str | yes | no | - |
+| upstream | 10 | str | yes | no | - |
+| ahead | 11 | int | yes | no | - |
+| behind | 12 | int | yes | no | - |
+| source_ref | 13 | str | yes | no | - |
+| target_branch | 14 | str | yes | no | - |
+| resulting_commit | 15 | str | yes | no | - |
+| conflict_paths | 16 | List<str> | no | no | - |
 
 ### PlannedChange
 
@@ -731,6 +906,7 @@ has no service method and no handler that executes commands.
 | --- | --- | --- | --- | --- | --- |
 | meta | 1 | RequestMeta | no | no | - |
 | snapshot_id | 2 | str | no | no | - |
+| source | 3 | SnapshotSource | yes | no | - |
 
 ### TagRequest
 
@@ -787,6 +963,29 @@ has no service method and no handler that executes commands.
 | meta | 1 | RequestMeta | no | no | - |
 | remote | 2 | str | yes | no | - |
 | refspec | 3 | str | yes | no | - |
+
+### StashRequest
+
+| Field | Tag | Type | Optional | Transient | Merge |
+| --- | --- | --- | --- | --- | --- |
+| meta | 1 | RequestMeta | no | no | - |
+| op | 2 | StashOp | no | no | - |
+| stash_id | 3 | str | yes | no | - |
+| message | 4 | str | yes | no | - |
+| include_untracked | 5 | bool | yes | no | - |
+| include_ignored | 6 | bool | yes | no | - |
+| expanded | 7 | bool | yes | no | - |
+| preserve_index | 8 | bool | yes | no | - |
+
+### BranchRequest
+
+| Field | Tag | Type | Optional | Transient | Merge |
+| --- | --- | --- | --- | --- | --- |
+| meta | 1 | RequestMeta | no | no | - |
+| op | 2 | BranchOp | no | no | - |
+| name | 3 | str | yes | no | - |
+| start_ref | 4 | str | yes | no | - |
+| switch_after_create | 5 | bool | yes | no | - |
 
 ### CreateWorkspaceResponse
 
@@ -886,6 +1085,20 @@ has no service method and no handler that executes commands.
 | Field | Tag | Type | Optional | Transient | Merge |
 | --- | --- | --- | --- | --- | --- |
 | response | 1 | ResponseEnvelope | no | no | - |
+
+### StashResponse
+
+| Field | Tag | Type | Optional | Transient | Merge |
+| --- | --- | --- | --- | --- | --- |
+| response | 1 | ResponseEnvelope | no | no | - |
+| bundles | 2 | List<StashBundle> | yes | no | - |
+
+### BranchResponse
+
+| Field | Tag | Type | Optional | Transient | Merge |
+| --- | --- | --- | --- | --- | --- |
+| response | 1 | ResponseEnvelope | no | no | - |
+| repos | 2 | List<BranchRepoSummary> | yes | no | - |
 
 ## Evolution Notes
 

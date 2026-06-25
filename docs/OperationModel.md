@@ -35,9 +35,9 @@ member ids or workspace-relative member paths. `all=true` selects all active
 members and is rejected if filters are also present.
 
 Some handlers require lock records for selected members. For example,
-materialization, tag management, capture, snapshot, commit, and narrowed
-stage-all resolve through the lock and can return `lock_not_found` for a
-selected member that has no lock entry. `ls` is manifest-tolerant and can list
+materialization, branch, stash, tag management, capture, snapshot, commit, and
+narrowed stage-all resolve through the lock and can return `lock_not_found` for
+a selected member that has no lock entry. `ls` is manifest-tolerant and can list
 configured but unmaterialized members.
 
 ## Policy
@@ -84,7 +84,7 @@ executes later must be prepared for state to change between plan and apply.
 | `partial` | Some members applied and others failed. |
 | `failed` | Operation failed without successful member application. |
 | `dirty` | Dirty-state specific aggregate value reserved by the protocol. |
-| `conflicted` | Conflict-specific aggregate value reserved by the protocol. |
+| `conflicted` | At least one member reached a reportable conflict state. |
 
 `MemberStatus` values:
 
@@ -107,3 +107,29 @@ the buffer overflows it emits a `reset` event and history before that event is
 incomplete.
 
 See [EventCatalog](EventCatalog.md).
+
+## Workspace Mutator Lock
+
+Branch and stash mutators serialize through a workspace-wide advisory lock at
+`.gwz/locks/workspace-mutator.lock`. The lock is taken before mutating native
+Git state or `.gwz/` stash registry files. The lock file may remain after a
+process exits; an unlocked file is not stale, and the operating system releases
+the held lock if the process dies.
+
+The lock protects cross-process operations in normal local filesystems. Network
+filesystems with unreliable advisory locking are unsupported for concurrent GWZ
+mutations; run branch and stash mutators serially there.
+
+## Branch And Stash Outcomes
+
+`gwz branch --create --switch` and `gwz materialize --switch` rewrite the lock
+from observed post-switch member state. Branch create attempts rollback of
+branches created earlier in the same operation when a later member fails.
+Branch delete preflights selected members and reports post-preflight failures as
+partial rather than claiming transactional deletion.
+
+`gwz stash` records one local bundle for a coordinated push. Clean members are
+stored as no-op members; dirty members carry push lifecycle and restore state
+separately so a partial or interrupted push remains inspectable. Restore
+operations default to preserving index state, require clean destinations, and
+keep unresolved or missing native payloads visible through bundle metadata.

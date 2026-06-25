@@ -161,6 +161,29 @@ pub(crate) fn reports_clean_untracked_unstaged_and_staged_status() {
 }
 
 #[test]
+pub(crate) fn status_hides_ignored_files_unless_requested() {
+    let temp = TempDir::new("status-ignored");
+    let backend = Git2Backend::new();
+    let repo_path = temp.path().join("repo");
+    backend.create_repo(&repo_path).unwrap();
+    commit_file(&repo_path, ".gitignore", "ignored/\n", "ignore", &[]).unwrap();
+    fs::create_dir_all(repo_path.join("ignored")).unwrap();
+    fs::write(repo_path.join("ignored/cache.txt"), "cache").unwrap();
+
+    let default_status = backend.status(&repo_path).unwrap();
+    assert_eq!(default_status, GitStatus::clean());
+
+    let ignored_status = backend
+        .status_with_options(&repo_path, GitStatusOptions::include_ignored())
+        .unwrap();
+    assert!(!ignored_status.is_dirty);
+    assert_eq!(ignored_status.untracked, 0);
+    assert!(ignored_status.files.iter().any(|file| {
+        file.path == "ignored/" && file.index_status == " " && file.worktree_status == "!"
+    }));
+}
+
+#[test]
 pub(crate) fn status_detects_a_staged_rename_with_original_path() {
     // F17: rename detection must be ON — a `git mv` should report one `R` entry with
     // the original path, not an unrelated delete + add.

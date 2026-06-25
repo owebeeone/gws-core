@@ -69,6 +69,14 @@ SCHEMA = schema(
         method("push", role="in",
                params=Params(request=Ref.PushRequest),
                out=Ref.PushResponse),
+        # Coordinate native Git stashes across selected members.
+        method("stash", role="in",
+               params=Params(request=Ref.StashRequest),
+               out=Ref.StashResponse),
+        # Manage local Git branches across selected members.
+        method("branch", role="in",
+               params=Params(request=Ref.BranchRequest),
+               out=Ref.BranchResponse),
         # Stream operation events by operation id.
         method("events.subscribe", role="out", shape="log",
                params=Params(operation_id=STR),
@@ -97,7 +105,9 @@ SCHEMA = schema(
          stage=13,
          ls=14,
          forall=15,
-         repo_sync=16),
+         repo_sync=16,
+         stash=17,
+         branch=18),
 
     # Operation kind for the `gwz tag` verb.
     TagOp=Enum(
@@ -106,6 +116,56 @@ SCHEMA = schema(
          fetch=2,
          push=3,
          delete=4),
+
+    # Operation kind for the `gwz stash` verb.
+    StashOp=Enum(
+         push=0,
+         list=1,
+         apply=2,
+         pop=3,
+         drop=4),
+
+    # Pre-attempt membership classification for a stash bundle member.
+    StashParticipation=Enum(
+         stashed=0,
+         empty=1,
+         skipped=2),
+
+    # Native stash save lifecycle for a stash bundle member.
+    StashPushLifecycle=Enum(
+         unattempted=0,
+         saving=1,
+         saved=2,
+         empty=3,
+         failed=4),
+
+    # Restore/drop state for a stash bundle member.
+    StashRestoreState=Enum(
+         pending=0,
+         applied=1,
+         popped=2,
+         dropped=3,
+         noop=4,
+         missing=5),
+
+    # Operation kind for the `gwz branch` verb.
+    BranchOp=Enum(
+         list=0,
+         create=1,
+         delete=2,
+         merge=3),
+
+    # Per-repository branch action result. Merge-only values are appended by B5a.
+    BranchActionResult=Enum(
+         listed=0,
+         created=1,
+         exists=2,
+         deleted=3,
+         switched=4,
+         noop=5,
+         skipped=6,
+         merged=7,
+         conflicted=8),
 
     # How `gwz forall` runs the command: direct argv, or via a shell.
     ExecMode=Enum(
@@ -147,7 +207,13 @@ SCHEMA = schema(
          head=1,
          snapshot=2,
          tag=3,
-         commit=4),
+         commit=4,
+         branch=5),
+
+    # Source used when capturing a snapshot.
+    SnapshotSourceKind=Enum(
+         current=0,
+         branch=1),
 
     # Requested pull/head sync behavior.
     SyncBehavior=Enum(
@@ -266,7 +332,13 @@ SCHEMA = schema(
          attribution_denied=26,
          permission_denied=27,
          io_error=28,
-         internal_error=29),
+         internal_error=29,
+         branch_detached_head=30,
+         branch_unborn_head=31,
+         branch_mixed=32,
+         stash_not_found=33,
+         stash_incomplete=34,
+         stash_conflict=35),
 
 
     # ---- common request/response values ----------------------------------
@@ -426,6 +498,13 @@ SCHEMA = schema(
         # Exact Git commit target when kind=commit.
         commit=F(3, STR, optional=True)),
 
+    # Source branch semantics for snapshot capture. When omitted, handlers use
+    # the existing observed current-worktree source.
+    SnapshotSource=Msg(
+        kind=F(1, Ref.SnapshotSourceKind),
+        # Branch name when kind=branch.
+        branch=F(2, STR, optional=True)),
+
     # Resolved state captured in the lock, snapshots, tags, and responses.
     ResolvedMemberState=Msg(
         member_id=F(1, STR),
@@ -564,6 +643,82 @@ SCHEMA = schema(
         branch_differences=F(5, List(Ref.GitBranchDifference)),
         root_status=F(6, Ref.WorkspaceRootGitStatus, optional=True),
         root_file_changes=F(7, List(Ref.WorkspaceRootFileChange))),
+
+    # Dirty-state summary captured before a coordinated stash push.
+    StashDirtySummary=Msg(
+        staged=F(1, BOOL),
+        unstaged=F(2, BOOL),
+        untracked=F(3, BOOL),
+        ignored=F(4, BOOL)),
+
+    # Push lifecycle error detail persisted with a stash member record.
+    StashErrorDetail=Msg(
+        code=F(1, STR),
+        message=F(2, STR)),
+
+    # Warning associated with a stash bundle or member.
+    StashWarning=Msg(
+        code=F(1, STR),
+        message=F(2, STR),
+        member_id=F(3, STR, optional=True)),
+
+    # Drift found while reconciling bundle metadata with native stash payloads.
+    StashDrift=Msg(
+        code=F(1, STR),
+        message=F(2, STR),
+        member_id=F(3, STR)),
+
+    # One selected member's participation, native push lifecycle, and restore state.
+    StashBundleMember=Msg(
+        member_id=F(1, STR),
+        path=F(2, STR),
+        participation=F(3, Ref.StashParticipation),
+        push_lifecycle=F(4, Ref.StashPushLifecycle),
+        restore_state=F(5, Ref.StashRestoreState),
+        branch_before=F(6, STR, optional=True),
+        head_before=F(7, STR, optional=True),
+        full_stash_message=F(8, STR),
+        dirty_summary=F(9, Ref.StashDirtySummary),
+        native_stash_object_id=F(10, STR, optional=True),
+        native_stash_display_ref=F(11, STR, optional=True),
+        error=F(12, Ref.StashErrorDetail, optional=True)),
+
+    # Durable coordinated stash bundle projection.
+    StashBundle=Msg(
+        schema=F(1, STR),
+        workspace_id=F(2, STR),
+        stash_id=F(3, STR),
+        created_at=F(4, STR),
+        message_suffix=F(5, STR),
+        include_untracked=F(6, BOOL),
+        include_ignored=F(7, BOOL),
+        members=F(8, List(Ref.StashBundleMember)),
+        warnings=F(9, List(Ref.StashWarning)),
+        drift=F(10, List(Ref.StashDrift)),
+        selected_members=F(11, List(STR))),
+
+    # Branch state and action result for one selected repository.
+    BranchRepoSummary=Msg(
+        member_id=F(1, STR),
+        member_path=F(2, STR),
+        source_kind=F(3, Ref.SourceKind),
+        result=F(4, Ref.BranchActionResult),
+        branch=F(5, STR, optional=True),
+        current_branch=F(6, STR, optional=True),
+        detached=F(7, BOOL),
+        unborn=F(8, BOOL),
+        head=F(9, STR, optional=True),
+        upstream=F(10, STR, optional=True),
+        ahead=F(11, INT, optional=True),
+        behind=F(12, INT, optional=True),
+        # Merge source ref requested for this repository.
+        source_ref=F(13, STR, optional=True),
+        # Attached target branch into which the source was merged.
+        target_branch=F(14, STR, optional=True),
+        # Resulting HEAD commit after a clean merge or fast-forward.
+        resulting_commit=F(15, STR, optional=True),
+        # Conflict paths relative to the member repository root.
+        conflict_paths=F(16, List(STR))),
 
     # Planned member mutation returned by dry-run or accepted responses.
     PlannedChange=Msg(
@@ -746,7 +901,8 @@ SCHEMA = schema(
     # Write a named snapshot for the selected members.
     SnapshotRequest=Msg(
         meta=F(1, Ref.RequestMeta),
-        snapshot_id=F(2, STR)),
+        snapshot_id=F(2, STR),
+        source=F(3, Ref.SnapshotSource, optional=True)),
 
     # Manage git tags (`refs/tags/<name>`) across the selected members.
     TagRequest=Msg(
@@ -802,6 +958,34 @@ SCHEMA = schema(
         # Refspec override for this request.
         refspec=F(3, STR, optional=True)),
 
+    # Coordinate native Git stash operations across selected members.
+    StashRequest=Msg(
+        meta=F(1, Ref.RequestMeta),
+        op=F(2, Ref.StashOp),
+        # Stash id for apply/pop/drop; list may omit, push generates one.
+        stash_id=F(3, STR, optional=True),
+        # Message suffix for push.
+        message=F(4, STR, optional=True),
+        # Include untracked files during push.
+        include_untracked=F(5, BOOL, optional=True),
+        # Include ignored files during push.
+        include_ignored=F(6, BOOL, optional=True),
+        # Include expanded per-member bundle detail in list responses.
+        expanded=F(7, BOOL, optional=True),
+        # Attempt to reinstate the index during apply/pop; default is handler-defined.
+        preserve_index=F(8, BOOL, optional=True)),
+
+    # Manage local Git branches across selected members.
+    BranchRequest=Msg(
+        meta=F(1, Ref.RequestMeta),
+        op=F(2, Ref.BranchOp),
+        # Branch name for create/delete; list may omit.
+        name=F(3, STR, optional=True),
+        # Start point for create, such as HEAD or refs/heads/main.
+        start_ref=F(4, STR, optional=True),
+        # Switch selected members to the branch after create.
+        switch_after_create=F(5, BOOL, optional=True)),
+
     # ---- action responses -------------------------------------------------
     # Response wrapper for create_workspace.
     CreateWorkspaceResponse=Msg(
@@ -856,4 +1040,12 @@ SCHEMA = schema(
     # Response wrapper for push.
     PushResponse=Msg(
         response=F(1, Ref.ResponseEnvelope)),
+    # Response wrapper for stash operations.
+    StashResponse=Msg(
+        response=F(1, Ref.ResponseEnvelope),
+        bundles=F(2, List(Ref.StashBundle), optional=True)),
+    # Response wrapper for branch operations.
+    BranchResponse=Msg(
+        response=F(1, Ref.ResponseEnvelope),
+        repos=F(2, List(Ref.BranchRepoSummary), optional=True)),
 )

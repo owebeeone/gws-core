@@ -10,7 +10,8 @@ Git operations.
 The trait covers:
 
 - repository creation, clone, fetch, push, and ls-remote;
-- fast-forward, merge, rebase, reset, commit checkout, and branch checkout;
+- fast-forward, merge, rebase, reset, commit checkout, branch checkout, branch
+  list/create/delete/switch, and stash push/list/apply/pop/drop;
 - status, HEAD, remotes, ref reads, and ancestry checks;
 - staging, committing, tag create/list/delete/fetch;
 - optional transfer progress during clone/fetch-like work.
@@ -77,6 +78,38 @@ Tags are real Git refs:
 
 Annotated tags are created when a message is provided. Signed tags require a
 message.
+
+## Branch Primitives
+
+Branch commands use real local Git branches in selected member repositories.
+
+- `branch_list` reports local branches and marks the current branch.
+- `branch_create` resolves the requested start ref per repository. An existing
+  branch at the same commit is a no-op; an existing branch at another commit is
+  rejected as divergence.
+- `branch_delete` refuses to delete the current branch.
+- `switch_branch` checks out an existing local branch without creating it or
+  moving the branch ref, then verifies HEAD is attached to that branch.
+- `checkout_branch` remains the materialize-restore primitive that can create a
+  branch at a saved commit when that is safe; command branch switching uses
+  `switch_branch` instead.
+
+## Stash Primitives
+
+Stash commands use native Git stash payloads in each selected member repository
+plus GWZ registry metadata under `.gwz/stash/bundles/`.
+
+- `stash_push` supports tracked-only, include-untracked, and include-ignored
+  modes. Include-ignored also includes untracked files.
+- `stash_list` returns native stash entries with stable object ids and display
+  indices.
+- `stash_apply`, `stash_pop`, and `stash_drop` resolve the current native stash
+  index immediately before mutation by object id first and GWZ message prefix
+  second. `stash@{n}` is display text only because indices move after stash
+  mutations.
+- Restore defaults preserve index state. Native restore conflicts are reported
+  as `stash_conflict`; missing native payloads are reported as
+  `stash_incomplete`.
 
 ## CLI Fallback Rules
 

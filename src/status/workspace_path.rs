@@ -220,6 +220,33 @@ mod tests {
     }
 
     #[test]
+    fn combined_status_hides_ignored_root_files() {
+        let temp = TempDir::new("ignored-root");
+        let backend = Git2Backend::new();
+        backend.create_repo(temp.path()).unwrap();
+        write_manifest(temp.path(), &manifest(vec![])).unwrap();
+        fs::write(temp.path().join(".gitignore"), "ignored/\n").unwrap();
+        commit_all(temp.path(), "workspace metadata and ignores").unwrap();
+        fs::create_dir_all(temp.path().join("ignored")).unwrap();
+        fs::write(temp.path().join("ignored/cache.txt"), "cache").unwrap();
+
+        let mut request = status_request(None);
+        request.mode = Some(crate::StatusMode::Combined);
+        request.include_file_changes = Some(true);
+        request.path_style = Some(crate::StatusPathStyle::WorkspaceRelative);
+
+        let response = handle_status(&backend, temp.path(), request, "op_status").unwrap();
+        let workspace_status = response.workspace_git_status.as_ref().unwrap();
+
+        assert!(workspace_status.clean);
+        assert!(workspace_status.root_file_changes.is_empty());
+        assert_eq!(
+            response.response.meta.aggregate_status,
+            crate::AggregateStatus::Ok
+        );
+    }
+
+    #[test]
     fn unknown_inactive_and_ambiguous_selection_fail_before_member_work() {
         let temp = TempDir::new("selection");
         write_manifest(
@@ -353,6 +380,37 @@ mod tests {
         let tree = repo.find_tree(tree_id)?;
         let signature = git2::Signature::now("GWZ Test", "gwz@example.invalid")?;
         let parent_commits = parents
+            .iter()
+            .map(|id| repo.find_commit(*id))
+            .collect::<Result<Vec<_>, _>>()?;
+        let parent_refs = parent_commits.iter().collect::<Vec<_>>();
+        Ok(repo
+            .commit(
+                Some("HEAD"),
+                &signature,
+                &signature,
+                message,
+                &tree,
+                &parent_refs,
+            )?
+            .to_string())
+    }
+
+    fn commit_all(repo_path: &Path, message: &str) -> Result<String, git2::Error> {
+        let repo = git2::Repository::open(repo_path)?;
+        let mut index = repo.index()?;
+        index.add_all(["*"].iter(), git2::IndexAddOption::DEFAULT, None)?;
+        index.write()?;
+        let tree_id = index.write_tree()?;
+        let tree = repo.find_tree(tree_id)?;
+        let signature = git2::Signature::now("GWZ Test", "gwz@example.invalid")?;
+        let parent_ids = repo
+            .head()
+            .ok()
+            .and_then(|head| head.target())
+            .into_iter()
+            .collect::<Vec<_>>();
+        let parent_commits = parent_ids
             .iter()
             .map(|id| repo.find_commit(*id))
             .collect::<Result<Vec<_>, _>>()?;

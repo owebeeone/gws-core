@@ -10,6 +10,7 @@ mod par_map_per_host;
 mod push_event;
 mod resolve_jobs;
 mod resolve_per_host;
+mod workspace_mutator_lock;
 
 pub use aggregate_status::*;
 pub(crate) use attribution_from_protocol::*;
@@ -22,3 +23,4 @@ pub use par_map_per_host::*;
 pub use push_event::*;
 pub use resolve_jobs::*;
 pub use resolve_per_host::*;
+pub use workspace_mutator_lock::*;

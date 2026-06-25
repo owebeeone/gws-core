@@ -38,6 +38,12 @@ pub enum ErrorCode {
     PermissionDenied,
     IoError,
     InternalError,
+    BranchDetachedHead,
+    BranchUnbornHead,
+    BranchMixed,
+    StashNotFound,
+    StashIncomplete,
+    StashConflict,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

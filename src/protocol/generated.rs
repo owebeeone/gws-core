@@ -21,6 +21,8 @@ pub enum ActionKind {
     Ls,
     Forall,
     RepoSync,
+    Stash,
+    Branch,
 }
 impl ActionKind {
     pub fn wire(self) -> i64 { match self {
@@ -41,6 +43,8 @@ impl ActionKind {
         Self::Ls => 14,
         Self::Forall => 15,
         Self::RepoSync => 16,
+        Self::Stash => 17,
+        Self::Branch => 18,
     } }
     pub fn from_wire(v: i64) -> Self { match v {
         0 => Self::CreateWorkspace,
@@ -60,6 +64,8 @@ impl ActionKind {
         14 => Self::Ls,
         15 => Self::Forall,
         16 => Self::RepoSync,
+        17 => Self::Stash,
+        18 => Self::Branch,
         _ => panic!("bad ActionKind wire value {}", v),
     } }
 }
@@ -87,6 +93,168 @@ impl TagOp {
         3 => Self::Push,
         4 => Self::Delete,
         _ => panic!("bad TagOp wire value {}", v),
+    } }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum StashOp {
+    #[default] Push,
+    List,
+    Apply,
+    Pop,
+    Drop,
+}
+impl StashOp {
+    pub fn wire(self) -> i64 { match self {
+        Self::Push => 0,
+        Self::List => 1,
+        Self::Apply => 2,
+        Self::Pop => 3,
+        Self::Drop => 4,
+    } }
+    pub fn from_wire(v: i64) -> Self { match v {
+        0 => Self::Push,
+        1 => Self::List,
+        2 => Self::Apply,
+        3 => Self::Pop,
+        4 => Self::Drop,
+        _ => panic!("bad StashOp wire value {}", v),
+    } }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum StashParticipation {
+    #[default] Stashed,
+    Empty,
+    Skipped,
+}
+impl StashParticipation {
+    pub fn wire(self) -> i64 { match self {
+        Self::Stashed => 0,
+        Self::Empty => 1,
+        Self::Skipped => 2,
+    } }
+    pub fn from_wire(v: i64) -> Self { match v {
+        0 => Self::Stashed,
+        1 => Self::Empty,
+        2 => Self::Skipped,
+        _ => panic!("bad StashParticipation wire value {}", v),
+    } }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum StashPushLifecycle {
+    #[default] Unattempted,
+    Saving,
+    Saved,
+    Empty,
+    Failed,
+}
+impl StashPushLifecycle {
+    pub fn wire(self) -> i64 { match self {
+        Self::Unattempted => 0,
+        Self::Saving => 1,
+        Self::Saved => 2,
+        Self::Empty => 3,
+        Self::Failed => 4,
+    } }
+    pub fn from_wire(v: i64) -> Self { match v {
+        0 => Self::Unattempted,
+        1 => Self::Saving,
+        2 => Self::Saved,
+        3 => Self::Empty,
+        4 => Self::Failed,
+        _ => panic!("bad StashPushLifecycle wire value {}", v),
+    } }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum StashRestoreState {
+    #[default] Pending,
+    Applied,
+    Popped,
+    Dropped,
+    Noop,
+    Missing,
+}
+impl StashRestoreState {
+    pub fn wire(self) -> i64 { match self {
+        Self::Pending => 0,
+        Self::Applied => 1,
+        Self::Popped => 2,
+        Self::Dropped => 3,
+        Self::Noop => 4,
+        Self::Missing => 5,
+    } }
+    pub fn from_wire(v: i64) -> Self { match v {
+        0 => Self::Pending,
+        1 => Self::Applied,
+        2 => Self::Popped,
+        3 => Self::Dropped,
+        4 => Self::Noop,
+        5 => Self::Missing,
+        _ => panic!("bad StashRestoreState wire value {}", v),
+    } }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum BranchOp {
+    #[default] List,
+    Create,
+    Delete,
+    Merge,
+}
+impl BranchOp {
+    pub fn wire(self) -> i64 { match self {
+        Self::List => 0,
+        Self::Create => 1,
+        Self::Delete => 2,
+        Self::Merge => 3,
+    } }
+    pub fn from_wire(v: i64) -> Self { match v {
+        0 => Self::List,
+        1 => Self::Create,
+        2 => Self::Delete,
+        3 => Self::Merge,
+        _ => panic!("bad BranchOp wire value {}", v),
+    } }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum BranchActionResult {
+    #[default] Listed,
+    Created,
+    Exists,
+    Deleted,
+    Switched,
+    Noop,
+    Skipped,
+    Merged,
+    Conflicted,
+}
+impl BranchActionResult {
+    pub fn wire(self) -> i64 { match self {
+        Self::Listed => 0,
+        Self::Created => 1,
+        Self::Exists => 2,
+        Self::Deleted => 3,
+        Self::Switched => 4,
+        Self::Noop => 5,
+        Self::Skipped => 6,
+        Self::Merged => 7,
+        Self::Conflicted => 8,
+    } }
+    pub fn from_wire(v: i64) -> Self { match v {
+        0 => Self::Listed,
+        1 => Self::Created,
+        2 => Self::Exists,
+        3 => Self::Deleted,
+        4 => Self::Switched,
+        5 => Self::Noop,
+        6 => Self::Skipped,
+        7 => Self::Merged,
+        8 => Self::Conflicted,
+        _ => panic!("bad BranchActionResult wire value {}", v),
     } }
 }
 
@@ -207,6 +375,7 @@ pub enum MaterializeTargetKind {
     Snapshot,
     Tag,
     Commit,
+    Branch,
 }
 impl MaterializeTargetKind {
     pub fn wire(self) -> i64 { match self {
@@ -215,6 +384,7 @@ impl MaterializeTargetKind {
         Self::Snapshot => 2,
         Self::Tag => 3,
         Self::Commit => 4,
+        Self::Branch => 5,
     } }
     pub fn from_wire(v: i64) -> Self { match v {
         0 => Self::Lock,
@@ -222,7 +392,25 @@ impl MaterializeTargetKind {
         2 => Self::Snapshot,
         3 => Self::Tag,
         4 => Self::Commit,
+        5 => Self::Branch,
         _ => panic!("bad MaterializeTargetKind wire value {}", v),
+    } }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum SnapshotSourceKind {
+    #[default] Current,
+    Branch,
+}
+impl SnapshotSourceKind {
+    pub fn wire(self) -> i64 { match self {
+        Self::Current => 0,
+        Self::Branch => 1,
+    } }
+    pub fn from_wire(v: i64) -> Self { match v {
+        0 => Self::Current,
+        1 => Self::Branch,
+        _ => panic!("bad SnapshotSourceKind wire value {}", v),
     } }
 }
 
@@ -538,6 +726,12 @@ pub enum GwzErrorCode {
     PermissionDenied,
     IoError,
     InternalError,
+    BranchDetachedHead,
+    BranchUnbornHead,
+    BranchMixed,
+    StashNotFound,
+    StashIncomplete,
+    StashConflict,
 }
 impl GwzErrorCode {
     pub fn wire(self) -> i64 { match self {
@@ -571,6 +765,12 @@ impl GwzErrorCode {
         Self::PermissionDenied => 27,
         Self::IoError => 28,
         Self::InternalError => 29,
+        Self::BranchDetachedHead => 30,
+        Self::BranchUnbornHead => 31,
+        Self::BranchMixed => 32,
+        Self::StashNotFound => 33,
+        Self::StashIncomplete => 34,
+        Self::StashConflict => 35,
     } }
     pub fn from_wire(v: i64) -> Self { match v {
         0 => Self::Ok,
@@ -603,6 +803,12 @@ impl GwzErrorCode {
         27 => Self::PermissionDenied,
         28 => Self::IoError,
         29 => Self::InternalError,
+        30 => Self::BranchDetachedHead,
+        31 => Self::BranchUnbornHead,
+        32 => Self::BranchMixed,
+        33 => Self::StashNotFound,
+        34 => Self::StashIncomplete,
+        35 => Self::StashConflict,
         _ => panic!("bad GwzErrorCode wire value {}", v),
     } }
 }
@@ -1002,6 +1208,26 @@ impl MaterializeTarget {
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
+pub struct SnapshotSource {
+    pub kind: SnapshotSourceKind,
+    pub branch: Option<String>,
+}
+impl SnapshotSource {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, Cbor::Int(self.kind.wire())),
+            (2, match &self.branch { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            kind: SnapshotSourceKind::from_wire(c.get(1).int()),
+            branch: { let v = c.get(2); if v.is_null() { None } else { Some(v.text()) } },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct ResolvedMemberState {
     pub member_id: String,
     pub path: String,
@@ -1356,6 +1582,257 @@ impl WorkspaceGitStatus {
             branch_differences: c.get(5).array().iter().map(|x| GitBranchDifference::from_cbor(x)).collect(),
             root_status: { let v = c.get(6); if v.is_null() { None } else { Some(WorkspaceRootGitStatus::from_cbor(v)) } },
             root_file_changes: c.get(7).array().iter().map(|x| WorkspaceRootFileChange::from_cbor(x)).collect(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct StashDirtySummary {
+    pub staged: bool,
+    pub unstaged: bool,
+    pub untracked: bool,
+    pub ignored: bool,
+}
+impl StashDirtySummary {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, Cbor::Bool(self.staged)),
+            (2, Cbor::Bool(self.unstaged)),
+            (3, Cbor::Bool(self.untracked)),
+            (4, Cbor::Bool(self.ignored)),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            staged: c.get(1).boolean(),
+            unstaged: c.get(2).boolean(),
+            untracked: c.get(3).boolean(),
+            ignored: c.get(4).boolean(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct StashErrorDetail {
+    pub code: String,
+    pub message: String,
+}
+impl StashErrorDetail {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, Cbor::Text(self.code.clone())),
+            (2, Cbor::Text(self.message.clone())),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            code: c.get(1).text(),
+            message: c.get(2).text(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct StashWarning {
+    pub code: String,
+    pub message: String,
+    pub member_id: Option<String>,
+}
+impl StashWarning {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, Cbor::Text(self.code.clone())),
+            (2, Cbor::Text(self.message.clone())),
+            (3, match &self.member_id { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            code: c.get(1).text(),
+            message: c.get(2).text(),
+            member_id: { let v = c.get(3); if v.is_null() { None } else { Some(v.text()) } },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct StashDrift {
+    pub code: String,
+    pub message: String,
+    pub member_id: String,
+}
+impl StashDrift {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, Cbor::Text(self.code.clone())),
+            (2, Cbor::Text(self.message.clone())),
+            (3, Cbor::Text(self.member_id.clone())),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            code: c.get(1).text(),
+            message: c.get(2).text(),
+            member_id: c.get(3).text(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct StashBundleMember {
+    pub member_id: String,
+    pub path: String,
+    pub participation: StashParticipation,
+    pub push_lifecycle: StashPushLifecycle,
+    pub restore_state: StashRestoreState,
+    pub branch_before: Option<String>,
+    pub head_before: Option<String>,
+    pub full_stash_message: String,
+    pub dirty_summary: StashDirtySummary,
+    pub native_stash_object_id: Option<String>,
+    pub native_stash_display_ref: Option<String>,
+    pub error: Option<StashErrorDetail>,
+}
+impl StashBundleMember {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, Cbor::Text(self.member_id.clone())),
+            (2, Cbor::Text(self.path.clone())),
+            (3, Cbor::Int(self.participation.wire())),
+            (4, Cbor::Int(self.push_lifecycle.wire())),
+            (5, Cbor::Int(self.restore_state.wire())),
+            (6, match &self.branch_before { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (7, match &self.head_before { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (8, Cbor::Text(self.full_stash_message.clone())),
+            (9, self.dirty_summary.to_cbor()),
+            (10, match &self.native_stash_object_id { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (11, match &self.native_stash_display_ref { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (12, match &self.error { Some(v) => v.to_cbor(), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            member_id: c.get(1).text(),
+            path: c.get(2).text(),
+            participation: StashParticipation::from_wire(c.get(3).int()),
+            push_lifecycle: StashPushLifecycle::from_wire(c.get(4).int()),
+            restore_state: StashRestoreState::from_wire(c.get(5).int()),
+            branch_before: { let v = c.get(6); if v.is_null() { None } else { Some(v.text()) } },
+            head_before: { let v = c.get(7); if v.is_null() { None } else { Some(v.text()) } },
+            full_stash_message: c.get(8).text(),
+            dirty_summary: StashDirtySummary::from_cbor(c.get(9)),
+            native_stash_object_id: { let v = c.get(10); if v.is_null() { None } else { Some(v.text()) } },
+            native_stash_display_ref: { let v = c.get(11); if v.is_null() { None } else { Some(v.text()) } },
+            error: { let v = c.get(12); if v.is_null() { None } else { Some(StashErrorDetail::from_cbor(v)) } },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct StashBundle {
+    pub schema: String,
+    pub workspace_id: String,
+    pub stash_id: String,
+    pub created_at: String,
+    pub message_suffix: String,
+    pub include_untracked: bool,
+    pub include_ignored: bool,
+    pub members: Vec<StashBundleMember>,
+    pub warnings: Vec<StashWarning>,
+    pub drift: Vec<StashDrift>,
+    pub selected_members: Vec<String>,
+}
+impl StashBundle {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, Cbor::Text(self.schema.clone())),
+            (2, Cbor::Text(self.workspace_id.clone())),
+            (3, Cbor::Text(self.stash_id.clone())),
+            (4, Cbor::Text(self.created_at.clone())),
+            (5, Cbor::Text(self.message_suffix.clone())),
+            (6, Cbor::Bool(self.include_untracked)),
+            (7, Cbor::Bool(self.include_ignored)),
+            (8, Cbor::Array(self.members.iter().map(|x| x.to_cbor()).collect())),
+            (9, Cbor::Array(self.warnings.iter().map(|x| x.to_cbor()).collect())),
+            (10, Cbor::Array(self.drift.iter().map(|x| x.to_cbor()).collect())),
+            (11, Cbor::Array(self.selected_members.iter().map(|x| Cbor::Text(x.clone())).collect())),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            schema: c.get(1).text(),
+            workspace_id: c.get(2).text(),
+            stash_id: c.get(3).text(),
+            created_at: c.get(4).text(),
+            message_suffix: c.get(5).text(),
+            include_untracked: c.get(6).boolean(),
+            include_ignored: c.get(7).boolean(),
+            members: c.get(8).array().iter().map(|x| StashBundleMember::from_cbor(x)).collect(),
+            warnings: c.get(9).array().iter().map(|x| StashWarning::from_cbor(x)).collect(),
+            drift: c.get(10).array().iter().map(|x| StashDrift::from_cbor(x)).collect(),
+            selected_members: c.get(11).array().iter().map(|x| x.text()).collect(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct BranchRepoSummary {
+    pub member_id: String,
+    pub member_path: String,
+    pub source_kind: SourceKind,
+    pub result: BranchActionResult,
+    pub branch: Option<String>,
+    pub current_branch: Option<String>,
+    pub detached: bool,
+    pub unborn: bool,
+    pub head: Option<String>,
+    pub upstream: Option<String>,
+    pub ahead: Option<i64>,
+    pub behind: Option<i64>,
+    pub source_ref: Option<String>,
+    pub target_branch: Option<String>,
+    pub resulting_commit: Option<String>,
+    pub conflict_paths: Vec<String>,
+}
+impl BranchRepoSummary {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, Cbor::Text(self.member_id.clone())),
+            (2, Cbor::Text(self.member_path.clone())),
+            (3, Cbor::Int(self.source_kind.wire())),
+            (4, Cbor::Int(self.result.wire())),
+            (5, match &self.branch { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (6, match &self.current_branch { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (7, Cbor::Bool(self.detached)),
+            (8, Cbor::Bool(self.unborn)),
+            (9, match &self.head { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (10, match &self.upstream { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (11, match &self.ahead { Some(v) => Cbor::Int(*v), None => Cbor::Null }),
+            (12, match &self.behind { Some(v) => Cbor::Int(*v), None => Cbor::Null }),
+            (13, match &self.source_ref { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (14, match &self.target_branch { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (15, match &self.resulting_commit { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (16, Cbor::Array(self.conflict_paths.iter().map(|x| Cbor::Text(x.clone())).collect())),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            member_id: c.get(1).text(),
+            member_path: c.get(2).text(),
+            source_kind: SourceKind::from_wire(c.get(3).int()),
+            result: BranchActionResult::from_wire(c.get(4).int()),
+            branch: { let v = c.get(5); if v.is_null() { None } else { Some(v.text()) } },
+            current_branch: { let v = c.get(6); if v.is_null() { None } else { Some(v.text()) } },
+            detached: c.get(7).boolean(),
+            unborn: c.get(8).boolean(),
+            head: { let v = c.get(9); if v.is_null() { None } else { Some(v.text()) } },
+            upstream: { let v = c.get(10); if v.is_null() { None } else { Some(v.text()) } },
+            ahead: { let v = c.get(11); if v.is_null() { None } else { Some(v.int()) } },
+            behind: { let v = c.get(12); if v.is_null() { None } else { Some(v.int()) } },
+            source_ref: { let v = c.get(13); if v.is_null() { None } else { Some(v.text()) } },
+            target_branch: { let v = c.get(14); if v.is_null() { None } else { Some(v.text()) } },
+            resulting_commit: { let v = c.get(15); if v.is_null() { None } else { Some(v.text()) } },
+            conflict_paths: c.get(16).array().iter().map(|x| x.text()).collect(),
         }
     }
 }
@@ -1868,18 +2345,21 @@ impl ExecResponse {
 pub struct SnapshotRequest {
     pub meta: RequestMeta,
     pub snapshot_id: String,
+    pub source: Option<SnapshotSource>,
 }
 impl SnapshotRequest {
     pub fn to_cbor(&self) -> Cbor {
         Cbor::Map(vec![
             (1, self.meta.to_cbor()),
             (2, Cbor::Text(self.snapshot_id.clone())),
+            (3, match &self.source { Some(v) => v.to_cbor(), None => Cbor::Null }),
         ])
     }
     pub fn from_cbor(c: &Cbor) -> Self {
         Self {
             meta: RequestMeta::from_cbor(c.get(1)),
             snapshot_id: c.get(2).text(),
+            source: { let v = c.get(3); if v.is_null() { None } else { Some(SnapshotSource::from_cbor(v)) } },
         }
     }
 }
@@ -2041,6 +2521,73 @@ impl PushRequest {
             meta: RequestMeta::from_cbor(c.get(1)),
             remote: { let v = c.get(2); if v.is_null() { None } else { Some(v.text()) } },
             refspec: { let v = c.get(3); if v.is_null() { None } else { Some(v.text()) } },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct StashRequest {
+    pub meta: RequestMeta,
+    pub op: StashOp,
+    pub stash_id: Option<String>,
+    pub message: Option<String>,
+    pub include_untracked: Option<bool>,
+    pub include_ignored: Option<bool>,
+    pub expanded: Option<bool>,
+    pub preserve_index: Option<bool>,
+}
+impl StashRequest {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, self.meta.to_cbor()),
+            (2, Cbor::Int(self.op.wire())),
+            (3, match &self.stash_id { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (4, match &self.message { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (5, match &self.include_untracked { Some(v) => Cbor::Bool(*v), None => Cbor::Null }),
+            (6, match &self.include_ignored { Some(v) => Cbor::Bool(*v), None => Cbor::Null }),
+            (7, match &self.expanded { Some(v) => Cbor::Bool(*v), None => Cbor::Null }),
+            (8, match &self.preserve_index { Some(v) => Cbor::Bool(*v), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            meta: RequestMeta::from_cbor(c.get(1)),
+            op: StashOp::from_wire(c.get(2).int()),
+            stash_id: { let v = c.get(3); if v.is_null() { None } else { Some(v.text()) } },
+            message: { let v = c.get(4); if v.is_null() { None } else { Some(v.text()) } },
+            include_untracked: { let v = c.get(5); if v.is_null() { None } else { Some(v.boolean()) } },
+            include_ignored: { let v = c.get(6); if v.is_null() { None } else { Some(v.boolean()) } },
+            expanded: { let v = c.get(7); if v.is_null() { None } else { Some(v.boolean()) } },
+            preserve_index: { let v = c.get(8); if v.is_null() { None } else { Some(v.boolean()) } },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct BranchRequest {
+    pub meta: RequestMeta,
+    pub op: BranchOp,
+    pub name: Option<String>,
+    pub start_ref: Option<String>,
+    pub switch_after_create: Option<bool>,
+}
+impl BranchRequest {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, self.meta.to_cbor()),
+            (2, Cbor::Int(self.op.wire())),
+            (3, match &self.name { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (4, match &self.start_ref { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (5, match &self.switch_after_create { Some(v) => Cbor::Bool(*v), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            meta: RequestMeta::from_cbor(c.get(1)),
+            op: BranchOp::from_wire(c.get(2).int()),
+            name: { let v = c.get(3); if v.is_null() { None } else { Some(v.text()) } },
+            start_ref: { let v = c.get(4); if v.is_null() { None } else { Some(v.text()) } },
+            switch_after_create: { let v = c.get(5); if v.is_null() { None } else { Some(v.boolean()) } },
         }
     }
 }
@@ -2322,6 +2869,46 @@ impl PushResponse {
     pub fn from_cbor(c: &Cbor) -> Self {
         Self {
             response: ResponseEnvelope::from_cbor(c.get(1)),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct StashResponse {
+    pub response: ResponseEnvelope,
+    pub bundles: Option<Vec<StashBundle>>,
+}
+impl StashResponse {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, self.response.to_cbor()),
+            (2, match &self.bundles { Some(v) => Cbor::Array(v.iter().map(|x| x.to_cbor()).collect()), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            response: ResponseEnvelope::from_cbor(c.get(1)),
+            bundles: { let v = c.get(2); if v.is_null() { None } else { Some(v.array().iter().map(|x| StashBundle::from_cbor(x)).collect()) } },
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct BranchResponse {
+    pub response: ResponseEnvelope,
+    pub repos: Option<Vec<BranchRepoSummary>>,
+}
+impl BranchResponse {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, self.response.to_cbor()),
+            (2, match &self.repos { Some(v) => Cbor::Array(v.iter().map(|x| x.to_cbor()).collect()), None => Cbor::Null }),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            response: ResponseEnvelope::from_cbor(c.get(1)),
+            repos: { let v = c.get(2); if v.is_null() { None } else { Some(v.array().iter().map(|x| BranchRepoSummary::from_cbor(x)).collect()) } },
         }
     }
 }

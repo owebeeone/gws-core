@@ -27,6 +27,8 @@ pub enum ActionKind {
     Ls,
     Forall,
     RepoSync,
+    Stash,
+    Branch,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -99,6 +101,8 @@ pub enum OperationRequest {
     Commit(crate::CommitRequest),
     Stage(crate::StageRequest),
     Ls(crate::LsRequest),
+    Stash(crate::StashRequest),
+    Branch(crate::BranchRequest),
 }
 
 impl OperationRequest {
@@ -120,6 +124,8 @@ impl OperationRequest {
             Self::Commit(request) => (ActionKind::Commit, &request.meta),
             Self::Stage(request) => (ActionKind::Stage, &request.meta),
             Self::Ls(request) => (ActionKind::Ls, &request.meta),
+            Self::Stash(request) => (ActionKind::Stash, &request.meta),
+            Self::Branch(request) => (ActionKind::Branch, &request.meta),
         };
         OperationContext::from_meta(operation_id.into(), action, meta)
     }
@@ -519,6 +525,8 @@ impl From<ActionKind> for crate::ActionKind {
             ActionKind::Ls => Self::Ls,
             ActionKind::Forall => Self::Forall,
             ActionKind::RepoSync => Self::RepoSync,
+            ActionKind::Stash => Self::Stash,
+            ActionKind::Branch => Self::Branch,
         }
     }
 }

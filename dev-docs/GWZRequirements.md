@@ -95,6 +95,10 @@ GWZ Core v0 MUST support:
 - status
 - snapshot current selection
 - create, list, delete, fetch, and push Git tags for selected members
+- create, list, switch, and delete branches for selected members
+- merge selected members from the current attached branch
+- create, list, apply, pop, and drop coordinated stash bundles for selected
+  members
 - pull to snapshot
 - pull to head
 - push selected Git members
@@ -108,9 +112,6 @@ GWZ Core v0 MAY defer:
 - package materialization
 - local directory materialization
 - generated source materialization
-- selection-wide branch
-- selection-wide merge
-- coordinated stash bundles
 - file watching
 - bare repository, worktree, and mirror-cache storage backends
 
@@ -201,6 +202,11 @@ For Git members, resolved member state MUST include:
 ### REQ-025: Internal State Directory
 
 The internal state directory name MUST be `.gwz`.
+
+`.gwz` MUST be treated as local runtime state, not versioned workspace intent.
+
+GWZ Core MUST keep `.gwz` out of the workspace root repository's tracked or
+untracked change set, for example through the managed root repository boundary.
 
 ### REQ-026: Snapshot Storage
 
@@ -457,6 +463,10 @@ The v0 action set MUST include:
 - pull to head
 - pull to snapshot
 - push
+- tag
+- branch
+- merge
+- stash
 
 ### REQ-081: Materialize
 
@@ -553,22 +563,69 @@ Git tags MUST be stored in Git repositories.
 
 ### REQ-088: Branch Selection
 
-Selection-wide branch operations SHOULD be supported after v0.
+GWZ Core v0 MUST support selection-wide Git branch operations for selected
+members.
 
 Branch operations MUST reject the whole operation before mutation if any selected
 member cannot branch cleanly, unless explicit partial policy is requested.
 
+Branch create and switch operations MUST update selected member Git repositories
+and then refresh the workspace lock from the resulting member state.
+
+Branch list operations MUST report per-member branch state without mutating Git
+repositories or GWZ artifacts.
+
+Branch delete operations MUST operate on selected members and MUST reject delete
+requests that require force unless an explicit force/delete policy is added.
+
 ### REQ-089: Merge Selection
 
-Selection-wide merge operations SHOULD be supported after v0.
+GWZ Core v0 MUST support selection-wide Git merge operations for selected
+members.
 
 Merge operations MUST reject the whole operation before mutation if any selected
-member cannot merge cleanly, unless explicit partial policy is requested.
+member is dirty, unmaterialized, detached, unborn, missing the source ref, or in
+an existing merge/rebase state, unless explicit partial policy is requested.
+Content conflicts discovered by Git during merge MUST be reported as conflicted
+member results with conflict paths rather than hidden as generic failure.
+
+V0 merge MUST merge into the current attached branch of each selected member.
+Merge into an explicitly named different target branch MAY be added after v0.
+
+Merge operations that create Git commits MUST use request-provided Git identity
+when present, subject to driver policy.
 
 ### REQ-089A: Compare To Snapshot
 
 GWZ Core SHOULD support comparing current workspace or selection state to a
 snapshot.
+
+### REQ-089B: Coordinated Stash Bundles
+
+GWZ Core v0 MUST support coordinated stash bundles for selected Git members.
+
+Stash push MUST operate on selected members only. The workspace root repository
+MUST NOT participate in v0 coordinated stash bundles.
+
+Stash bundle metadata MUST be stored under `.gwz/stash/bundles/` as
+human-readable local runtime state and MUST NOT be stored in versioned workspace
+artifacts.
+
+Stash metadata MUST record the workspace id, stash id, selected member ids,
+member paths, branch and HEAD before push, native stash object identity when
+available, dirty summary, push lifecycle state, and restore state.
+
+Stash restore operations MUST resolve native stash entries by stable object
+identity before using display-only native stash indices.
+
+Stash apply, pop, and drop MUST update only the selected bundle member records.
+
+Stash list and restore preflight MUST detect bundle records whose native stash
+payload is missing and native GWZ-prefixed stash payloads that have no bundle
+record.
+
+Stash mutations and branch mutations MUST be serialized by a workspace-wide
+cross-process mutator lock in addition to per-member mutation serialization.
 
 ## Message Protocol Requirements
 

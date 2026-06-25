@@ -35,6 +35,12 @@ impl From<model::ErrorCode> for generated::GwzErrorCode {
             model::ErrorCode::PermissionDenied => Self::PermissionDenied,
             model::ErrorCode::IoError => Self::IoError,
             model::ErrorCode::InternalError => Self::InternalError,
+            model::ErrorCode::BranchDetachedHead => Self::BranchDetachedHead,
+            model::ErrorCode::BranchUnbornHead => Self::BranchUnbornHead,
+            model::ErrorCode::BranchMixed => Self::BranchMixed,
+            model::ErrorCode::StashNotFound => Self::StashNotFound,
+            model::ErrorCode::StashIncomplete => Self::StashIncomplete,
+            model::ErrorCode::StashConflict => Self::StashConflict,
         }
     }
 }

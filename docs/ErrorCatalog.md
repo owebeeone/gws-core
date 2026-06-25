@@ -35,6 +35,12 @@
 | `permission_denied` | Reserved for filesystem/authorization denial. | Check filesystem permissions or credentials. |
 | `io_error` | Filesystem read/write/fsync/rename error. | Check disk, permissions, and path availability. |
 | `internal_error` | Serialization or invariant failure. | Treat as a bug and capture diagnostics. |
+| `branch_detached_head` | Current-branch snapshot found a selected member on a detached HEAD. | Switch that member to a branch or snapshot a named branch. |
+| `branch_unborn_head` | Current-branch snapshot found a selected member with no born attached branch. | Create the first commit or snapshot a named existing branch. |
+| `branch_mixed` | Current-branch snapshot found selected members attached to different branch names. | Narrow the selection or use `snapshot --branch <name>`. |
+| `stash_not_found` | Requested stash bundle is missing, or no eligible latest bundle exists. | Run `gwz stash list` or provide an existing `stash_id`. |
+| `stash_incomplete` | Local bundle metadata and native Git stash payloads no longer match, or a partial restore needs explicit selection. | Inspect `gwz stash list --expanded`; recover/drop native stashes manually if needed. |
+| `stash_conflict` | Native stash restore reported a conflict. | Resolve the affected member repository and retry or clean up the stash explicitly. |
 
 Errors can appear as a returned `ModelError`, an operation-level `GwzError` in
 `ResponseEnvelope.errors`, or a member-scoped `MemberResponse.error`.

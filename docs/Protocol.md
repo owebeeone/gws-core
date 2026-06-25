@@ -13,6 +13,13 @@ See [MessageCatalog](MessageCatalog.md) for the generated method table.
 Core service methods map to Rust handlers. `events.subscribe` and
 `operation.result` model runtime observation of operation records.
 
+Branch and stash are normal core service methods. `BranchRequest` supports
+list/create/delete and current-attached-branch merge behavior. Clean branch
+merges report the resulting commit per member; conflicted merges report
+`BranchActionResult.conflicted` with per-member conflict paths and leave the
+native Git merge state intact for user resolution. `StashRequest` supports
+push/list/apply/pop/drop coordinated bundle behavior.
+
 ## Transport
 
 `gwz-core` does not define a network transport. A caller can use the generated

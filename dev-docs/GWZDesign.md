@@ -207,10 +207,16 @@ workspace/
 .gwz/
   snapshots/
     <snapshot-id>.yaml
+  stash/
+    bundles/
+      <stash-id>.yaml
+  locks/
+    workspace-mutator.lock
 ```
 
-`workspace/` contains versioned workspace artifacts. `.gwz/` is internal runtime
-state.
+`workspace/` contains versioned workspace artifacts. `.gwz/` is local internal
+runtime state. Files under `.gwz/` are not portable workspace intent and are not
+tracked in the workspace root repository.
 
 Decision: v0 uses the directory layout above. Older draft/requirements text that
 named flat files such as `workspace.gwz.yaml` and `workspace.gwz.lock.yaml` is
@@ -218,6 +224,8 @@ superseded by this accepted design.
 
 Persistent operation event logs under `.gwz/operations/` are deferred. V0 keeps
 operation events in memory and lets drivers render or persist event streams.
+Stash bundle metadata and workspace mutator lock files are accepted v0 runtime
+state under `.gwz/`.
 
 ## Workspace Discovery
 
@@ -356,6 +364,10 @@ snapshot
   writes .gwz/snapshots/<snapshot-id>.yaml
   does not rewrite the lock
 
+stash push/apply/pop/drop
+  writes .gwz/stash/bundles/<stash-id>.yaml
+  does not rewrite the lock
+
 tag
   writes workspace/tags/<tag-name>.yml
   does not rewrite the lock
@@ -455,6 +467,16 @@ create_repo(path) -> GitCreateResult
 add_remote(repo, name, url) -> GitRemoteResult
 push(repo, remote, refspec) -> GitPushResult
 read_ref(repo, ref_spec) -> GitRefResult
+create_branch(repo, branch, start_point) -> GitBranchResult
+list_branches(repo) -> GitBranchListResult
+delete_branch(repo, branch) -> GitBranchResult
+checkout_branch(repo, branch) -> GitUpdateResult
+merge(repo, source_ref) -> GitMergeResult
+stash_push(repo, message, options) -> GitStashPushResult
+stash_list(repo) -> GitStashListResult
+stash_apply(repo, stash_identity, options) -> GitStashResult
+stash_pop(repo, stash_identity, options) -> GitStashResult
+stash_drop(repo, stash_identity) -> GitStashResult
 ```
 
 Backend calls should receive operation attribution context. Calls that create
@@ -480,7 +502,7 @@ rather than becoming public API behavior.
 Member repositories are nested git repos at `root/<member.path>`. The root repo
 treats each member as opaque — it never tracks or recurses into member files — by
 **hiding** every member from the root via a gwz-managed block in the root repo's
-local `.git/info/exclude`, alongside `/gwz.conf/.tmp/`.
+local `.git/info/exclude`, alongside `/gwz.conf/.tmp/` and `/.gwz/`.
 
 `gwz.yml` is authoritative for membership and `gwz.lock.yml` is the authoritative
 record of each member's commit; members are *not* tracked in the root (no gitlinks,
@@ -496,6 +518,10 @@ verb: it commits members first, re-locks from their new HEADs, then commits the 
 lands back on the original AD2 disposition (the lock SHA, not a gitlink, is the
 record); the earlier gitlink boundary was implemented then reverted — see
 `history/GWZGitlinkPlan.md` for that historical design.
+
+Because `.gwz/` is local runtime state, writing snapshots, stash bundle metadata,
+or lock files under `.gwz/` must not make the root repository dirty. The root
+boundary helper is responsible for keeping the runtime directory excluded.
 
 ## Operation Flow
 
@@ -564,6 +590,88 @@ remote ref. Local-only members produce `PlannedAction.noop` and
 `driver_selected` is a reserved policy escape hatch for future drivers that
 provide an explicit sync-policy resolver. If no resolver is registered, v0
 should reject `driver_selected` with `unsupported_operation`.
+
+## Branch, Merge, And Stash Scope
+
+Wave 0 promotes selection-wide branch/merge and coordinated stash from deferred
+operations into the accepted v0 implementation track.
+
+Branch operations are selection-wide Git mutations or reads over selected
+members:
+
+- create a branch in each selected member at the requested start point
+- switch selected members to a named branch
+- list branch state across selected members
+- delete a branch without force
+
+Branch create and switch refresh the lock from observed member state after the
+Git mutation succeeds. Branch list does not mutate Git repositories or GWZ
+artifacts. Branch delete is not gated on clean worktrees because deleting an
+unattached branch does not change working tree contents; force delete remains
+outside v0.
+
+Merge is selection-wide and v0 merges the requested source ref into each
+selected member's current attached branch. `--into` or any operation that first
+switches to another target branch is deferred. Merge preflight must reject the
+whole operation before mutation when any selected member is dirty, detached
+where an attached branch is required, unborn, missing the source ref, or already
+in a merge/rebase state, unless explicit partial policy is requested. Content
+conflicts discovered during Git merge are reported as conflicted branch results
+with conflict paths.
+
+Coordinated stash operates on selected members only. The workspace root is
+excluded from v0 stash participation. A stash push creates native Git stash
+entries in dirty selected members and writes bundle metadata under
+`.gwz/stash/bundles/<stash-id>.yaml`; clean selected members are recorded as
+noops. Apply, pop, and drop re-resolve native stash entries by object id before
+falling back to display-only `stash@{n}` text.
+
+Stash metadata is local runtime state, not versioned workspace intent. A clone
+that lacks another clone's `.gwz/stash/bundles/` records does not have portable
+bundle grouping, although native per-member GWZ-prefixed stash entries may still
+exist as recoverable orphans.
+
+The first stash bundle schema records:
+
+```yaml
+schema: gwz.stash-bundle/v0
+workspace_id: ws_01JZ...
+stash_id: stash_01JZ...
+created_at: "2026-06-25T00:00:00Z"
+message: "work in progress"
+selected_members:
+  - mem_01JZ...
+members:
+  mem_01JZ...:
+    path: repos/example
+    branch_before: main
+    head_before: abc123...
+    native_stash_oid: def456...
+    native_display_ref: "stash@{0}"
+    participation: stashed
+    push_lifecycle: saved
+    restore_state: pending
+    dirty_summary:
+      staged: 1
+      unstaged: 2
+      untracked: 0
+```
+
+Pinned member state tuples:
+
+- clean/noop: `participation=empty`, `push_lifecycle=empty`,
+  `restore_state=noop`
+- saved dirty state: `participation=stashed`, `push_lifecycle=saved`,
+  `restore_state=pending`
+- failed, saving, or unattempted dirty state: `participation=stashed`,
+  `push_lifecycle=failed|saving|unattempted`, `restore_state=missing`
+- post-restore state keeps `push_lifecycle=saved` and changes
+  `restore_state` to `applied`, `popped`, `dropped`, or `missing`
+
+Stash list and restore preflight reconcile both directions: bundle records whose
+native stash payload is missing, and native GWZ-prefixed stash payloads that have
+no bundle record. V0 surfaces orphans with remediation guidance; adoption is a
+later repair command.
 
 ## Attribution And Git Identity
 
@@ -691,7 +799,15 @@ SCHEMA = schema(
          tag=7,
          pull_head=8,
          pull_snapshot=9,
-         push=10),
+         push=10,
+         capture=11,
+         commit=12,
+         stage=13,
+         ls=14,
+         forall=15,
+         repo_sync=16,
+         stash=17,
+         branch=18),
 
     Enum("SourceKind",
          git=0,
@@ -706,7 +822,9 @@ SCHEMA = schema(
          noop=2,
          rejected=3,
          partial=4,
-         failed=5),
+         failed=5,
+         dirty=6,
+         conflicted=7),
 
     Enum("MemberStatus",
          planned=0,
@@ -714,14 +832,16 @@ SCHEMA = schema(
          noop=2,
          skipped=3,
          rejected=4,
-         failed=5),
+         failed=5,
+         conflicted=6),
 
     Enum("MaterializeTargetKind",
          lock=0,
          head=1,
          snapshot=2,
          tag=3,
-         commit=4),
+         commit=4,
+         branch=5),
 
     Enum("SyncBehavior",
          fetch_only=0,
@@ -755,7 +875,10 @@ SCHEMA = schema(
          write_lock=8,
          write_snapshot=9,
          write_tag=10,
-         push=11),
+         push=11,
+         merge=12,
+         rebase=13,
+         reset=14),
 
     Enum("LockMatch",
          unknown=0,
@@ -808,7 +931,13 @@ SCHEMA = schema(
          attribution_denied=26,
          permission_denied=27,
          io_error=28,
-         internal_error=29),
+         internal_error=29,
+         branch_detached_head=30,
+         branch_unborn_head=31,
+         branch_mixed=32,
+         stash_not_found=33,
+         stash_incomplete=34,
+         stash_conflict=35),
 
     # ---- common request/response values ----------------------------------
     Msg("WorkspaceRef",
@@ -1031,6 +1160,23 @@ SCHEMA = schema(
         F("remote", 2, STR, optional=True),
         F("refspec", 3, STR, optional=True)),
 
+    Msg("BranchRequest",
+        F("meta", 1, Ref("RequestMeta")),
+        F("op", 2, Ref("BranchOp")),
+        F("name", 3, STR, optional=True),
+        F("start_ref", 4, STR, optional=True),
+        F("switch_after_create", 5, BOOL, optional=True)),
+
+    Msg("StashRequest",
+        F("meta", 1, Ref("RequestMeta")),
+        F("op", 2, Ref("StashOp")),
+        F("stash_id", 3, STR, optional=True),
+        F("message", 4, STR, optional=True),
+        F("include_untracked", 5, BOOL, optional=True),
+        F("include_ignored", 6, BOOL, optional=True),
+        F("expanded", 7, BOOL, optional=True),
+        F("preserve_index", 8, BOOL, optional=True)),
+
     # ---- action responses -------------------------------------------------
     Msg("CreateWorkspaceResponse", F("response", 1, Ref("ResponseEnvelope"))),
     Msg("InitFromSourcesResponse", F("response", 1, Ref("ResponseEnvelope"))),
@@ -1043,6 +1189,8 @@ SCHEMA = schema(
     Msg("PullHeadResponse", F("response", 1, Ref("ResponseEnvelope"))),
     Msg("PullSnapshotResponse", F("response", 1, Ref("ResponseEnvelope"))),
     Msg("PushResponse", F("response", 1, Ref("ResponseEnvelope"))),
+    Msg("BranchResponse", F("response", 1, Ref("ResponseEnvelope"))),
+    Msg("StashResponse", F("response", 1, Ref("ResponseEnvelope"))),
 
     service("GwzCore",
         method("create_workspace", role="in",
@@ -1078,6 +1226,12 @@ SCHEMA = schema(
         method("push", role="in",
                params=[("request", Ref("PushRequest"))],
                out=Ref("PushResponse")),
+        method("branch", role="in",
+               params=[("request", Ref("BranchRequest"))],
+               out=Ref("BranchResponse")),
+        method("stash", role="in",
+               params=[("request", Ref("StashRequest"))],
+               out=Ref("StashResponse")),
         method("events.subscribe", role="out", shape="log",
                params=[("operation_id", STR)],
                out=Ref("OperationEvent")),
@@ -1100,11 +1254,18 @@ The runtime owns:
 - a bounded in-memory event buffer per running operation
 - a global concurrency limit
 - a per-member mutation lock
+- a workspace-wide cross-process mutator lock for branch and stash mutations
 
 Execution is parallel across members and serialized per member.
 
 Status/read-only operations may run concurrently with other reads. Mutating
 operations require the per-member mutation lock.
+
+Branch and stash mutations also acquire the workspace-wide mutator lock before
+the first member mutation. This serializes operations whose correctness depends
+on bundle-wide metadata or Git stash index ordering across separate processes.
+The lock file lives under `.gwz/locks/`; an unlocked lock file may remain after
+process exit and is not by itself stale.
 
 V0 runtime decision:
 
@@ -1204,6 +1365,15 @@ gwz tag <name>
 
 gwz push [--remote <name>] [--refspec <refspec>]
   -> PushRequest
+
+gwz branch <operation> [branch]
+  -> BranchRequest
+
+gwz branch --merge <source-ref>
+  -> BranchRequest
+
+gwz stash <push|list|apply|pop|drop> [stash-id]
+  -> StashRequest
 
 gwz status
   -> StatusRequest
@@ -1440,6 +1610,75 @@ Default policy:
 - local-only members without a remote are skipped or fail according to policy
 - per-member push outcomes are required
 
+### Branch
+
+Inputs:
+
+- workspace root
+- operation: create / list / switch / delete
+- branch name except for list
+- optional start point for create
+- optional selection
+
+Flow:
+
+- resolve selection
+- for create/switch/delete, acquire the workspace mutator lock
+- preflight all selected members before mutation
+- execute selected Git branch operation per member
+- for create/switch, refresh `workspace/gwz.lock.yml` from observed member state
+- for list/delete, do not rewrite the lock
+
+V0 delete refuses force-delete behavior. Delete does not require a clean
+worktree because it does not change the selected member working tree.
+
+### Merge
+
+Inputs:
+
+- workspace root
+- source ref
+- optional selection
+- optional attribution/Git identity
+
+Flow:
+
+- resolve selection
+- preflight all selected members before mutation
+- require each selected member to be on an attached branch
+- merge the source ref into that current branch
+- refresh `workspace/gwz.lock.yml` from observed member state
+- report merge conflicts as branch results with conflict paths
+
+V0 does not support `--into`; callers that need another target branch must
+switch first with an explicit branch operation.
+
+### Stash
+
+Inputs:
+
+- workspace root
+- operation: push / list / apply / pop / drop
+- stash id for apply/pop/drop
+- optional message for push
+- include-untracked and include-ignored flags for push
+- optional selection
+
+Flow:
+
+- resolve selection
+- for push/apply/pop/drop, acquire the workspace mutator lock
+- push native Git stashes sequentially across selected members and write bundle
+  metadata under `.gwz/stash/bundles/<stash-id>.yaml`
+- list bundles newest first and surface missing native payloads or native
+  orphan payloads
+- apply/pop/drop re-resolve native stash identity by object id first, then
+  GWZ-prefixed message/display ref
+- update per-member restore state after apply/pop/drop
+
+Stash push excludes the workspace root. Clean selected members are retained in
+the bundle as noops so the coordinated selection remains auditable.
+
 ## Error Model
 
 Errors are exposed as typed taut enum values through `GwzErrorCode`.
@@ -1505,7 +1744,6 @@ The following are intentionally not designed in detail for v0:
 
 - source catalog persistence
 - archive/package/local/generated materialization
-- selection-wide branch and merge
 - file watching
 - bare repository/worktree/mirror-cache storage
 - remote capability enforcement

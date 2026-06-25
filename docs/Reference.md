@@ -87,6 +87,8 @@ functions are the simpler entrypoints for direct embedding and tests.
 | `LsRequest` | `workspace_ops::handle_ls` | List members from manifest plus lock without calling Git. |
 | `SnapshotRequest` | `workspace_ops::handle_snapshot` | Write a named snapshot of selected member states. |
 | `TagRequest` | `workspace_ops::handle_tag` | Manage real Git tags across selected members, and the root for local operations. |
+| `BranchRequest` | `workspace_ops::handle_branch` | List, create, delete, or merge local Git branches across selected members. |
+| `StashRequest` | `workspace_ops::handle_stash` | Manage coordinated native Git stash bundles across selected members. |
 | `CaptureRequest` | `workspace_ops::handle_capture` | Capture observed selected member state into the lock without worktree mutation. |
 | `CommitRequest` | `workspace_ops::handle_commit` | Commit selected members, refresh the lock, then commit root metadata last. |
 | `StageRequest` | `workspace_ops::handle_stage` | Route pathspecs to owning member/root repositories and stage them. |
@@ -124,9 +126,23 @@ Durable workspace artifacts live under `gwz.conf/`:
 - `gwz.conf/gwz.lock.yml` for the lock;
 - `gwz.conf/snapshots/<snapshot-id>.yaml` for snapshots.
 
+Local runtime state lives under `.gwz/` and is excluded from the workspace root
+repository. Stash bundle registry files are stored at
+`.gwz/stash/bundles/<stash-id>.yaml`; the workspace-wide mutator lock uses
+`.gwz/locks/workspace-mutator.lock`.
+
 Tags are not GWZ artifacts in v0.3.0. `TagRequest` manages real Git refs named
 `refs/tags/<name>`. `MaterializeTargetKind::Tag` checks out members that carry
 the named Git tag and skips untagged members by default.
+
+`MaterializeTargetKind::Branch` switches selected materialized members to an
+existing local branch and rewrites the lock from observed post-switch state. It
+does not create branches, fetch, detach, or move branch refs.
+
+`SnapshotRequest.source` can request branch-based snapshot capture. A current
+branch snapshot records the selected members' attached HEADs and rejects
+detached, unborn, or mixed branch selections. A named branch snapshot resolves
+`refs/heads/<name>` in each selected member without switching worktrees.
 
 ## Direct vs CLI Use
 
@@ -134,7 +150,8 @@ Use `gwz-core` directly when embedding workspace behavior in an agent, UI, test
 harness, or another local service.
 
 Use `gwz-cli` when you want command behavior, argument parsing, terminal/JSON
-rendering, and the user workflow for init, status, snapshot, tag, pull, and push.
+rendering, and the user workflow for init, status, snapshot, tag, branch, stash,
+pull, and push.
 
 ## Further Reading
 

@@ -1,7 +1,8 @@
 # Workspace Artifacts
 
 `gwz-core` v0.3.0 stores durable workspace metadata under `gwz.conf/` in the
-workspace root repository.
+workspace root repository. Local runtime state lives under `.gwz/` and is not
+portable workspace intent.
 
 ## Paths
 
@@ -11,7 +12,9 @@ workspace root repository.
 | `gwz.conf/gwz.lock.yml` | `gwz.lock/v0` | Resolved member state for materialization. |
 | `gwz.conf/snapshots/<snapshot-id>.yaml` | `gwz.snapshot/v0` | Named captured member state. |
 | `gwz.conf/.tmp/` | local only | Reserved temporary area excluded from the root Git repository. |
-| `.git/info/exclude` | local only | Workspace boundary excludes for member repos and `gwz.conf/.tmp/`. |
+| `.gwz/stash/bundles/<stash-id>.yaml` | `gwz.stash-bundle/v0` | Local coordinated stash bundle registry metadata. |
+| `.gwz/locks/workspace-mutator.lock` | local only | Workspace-wide advisory lock used by branch and stash mutations. |
+| `.git/info/exclude` | local only | Workspace boundary excludes for member repos, `gwz.conf/.tmp/`, and `.gwz/`. |
 
 There is no live `gwz.conf/tags` path in v0.3.0. Older design history may
 mention tag artifacts; current `gwz tag` manages real Git refs.
@@ -66,10 +69,10 @@ members:
     materialized: true
 ```
 
-`capture`, `commit`, selected materialize targets, pull/head, and clone flows can
-rewrite the lock. The lock is written from observed post-mutation state where
-the operation changes a worktree. `repo sync` refreshes manifest metadata only;
-it does not rewrite the lock.
+`capture`, `commit`, selected materialize targets, pull/head, branch switch, and
+clone flows can rewrite the lock. The lock is written from observed
+post-mutation state where the operation changes a worktree. `repo sync`
+refreshes manifest metadata only; it does not rewrite the lock.
 
 ## Snapshots
 
@@ -97,6 +100,32 @@ members:
 
 Duplicate snapshot ids are rejected. Listing snapshots treats a missing
 snapshot directory as empty.
+
+## Stash Bundles
+
+Coordinated stash metadata is stored locally under `.gwz/stash/bundles/`.
+Bundle files are YAML records named by `stash_id`, for example
+`.gwz/stash/bundles/stash_2026_06_25T10_00_00Z.yaml`.
+
+The registry records the selected member ids, per-member path, branch/head
+before the push, dirty summary, native stash object id, display ref, push
+lifecycle, restore state, warning, and drift metadata. Native Git stash payloads
+remain in each selected member repository; the registry only groups and tracks
+them. If `.gwz/` is removed, bundle grouping is lost, but native GWZ-prefixed
+stash entries can still appear as orphans during stash listing.
+
+The workspace root repository is not a stash participant. `gwz stash` applies
+only to selected workspace members and the `.gwz/` registry is excluded from
+root Git status.
+
+## Runtime Locks
+
+Branch and stash mutations acquire an advisory exclusive lock at
+`.gwz/locks/workspace-mutator.lock` before mutating native Git state or stash
+registry files. The lock file may remain after a process exits; an unlocked file
+is not stale. If a process dies while holding the lock, the operating system
+releases the file lock with that process. Concurrent mutators on network
+filesystems with unreliable advisory locking are unsupported.
 
 ## Atomic Writes
 

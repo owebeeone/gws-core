@@ -81,6 +81,7 @@ functions are the simpler entrypoints for direct embedding and tests.
 | `InitFromSourcesRequest` | `workspace_ops::handle_init_from_sources` | Create or plan a workspace from source URLs, cloning each source into a member path. |
 | `AddExistingRepoRequest` | `workspace_ops::handle_add_existing_repo` | Register an existing Git repository as a workspace member without recloning it. |
 | `CreateRepoRequest` | `workspace_ops::handle_create_repo` | Initialize a new local Git repository and add it to the workspace. |
+| `RepoSyncRequest` | `workspace_ops::handle_repo_sync` | Refresh registered member manifest metadata from local Git config without rewriting the lock. |
 | `MaterializeRequest` | `workspace_ops::handle_materialize` | Move selected members to an explicit lock, snapshot, tag, or commit target. |
 | `StatusRequest` | `status::handle_status` | Report selected member Git state, lock match state, and optional combined status projections. |
 | `LsRequest` | `workspace_ops::handle_ls` | List members from manifest plus lock without calling Git. |

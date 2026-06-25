@@ -18,6 +18,7 @@ API and from workspace artifact YAML schemas.
 | GwzCore | init_from_sources | in | unary | request: InitFromSourcesRequest | value: InitFromSourcesResponse |
 | GwzCore | add_existing_repo | in | unary | request: AddExistingRepoRequest | value: AddExistingRepoResponse |
 | GwzCore | create_repo | in | unary | request: CreateRepoRequest | value: CreateRepoResponse |
+| GwzCore | repo_sync | in | unary | request: RepoSyncRequest | value: RepoSyncResponse |
 | GwzCore | materialize | in | unary | request: MaterializeRequest | value: MaterializeResponse |
 | GwzCore | status | in | unary | request: StatusRequest | value: StatusResponse |
 | GwzCore | ls | in | unary | request: LsRequest | value: LsResponse |
@@ -46,6 +47,7 @@ has no service method and no handler that executes commands.
 | InitFromSourcesRequest | InitFromSourcesResponse | workspace_ops::handle_init_from_sources | init | core service |
 | AddExistingRepoRequest | AddExistingRepoResponse | workspace_ops::handle_add_existing_repo | add | core service |
 | CreateRepoRequest | CreateRepoResponse | workspace_ops::handle_create_repo | repo/create | core service |
+| RepoSyncRequest | RepoSyncResponse | workspace_ops::handle_repo_sync | repo/sync | core service |
 | MaterializeRequest | MaterializeResponse | workspace_ops::handle_materialize | materialize/clone | core service |
 | StatusRequest | StatusResponse | status::handle_status | status | core service |
 | LsRequest | LsResponse | workspace_ops::handle_ls | ls | core service |
@@ -81,6 +83,7 @@ has no service method and no handler that executes commands.
 | stage | 13 |
 | ls | 14 |
 | forall | 15 |
+| repo_sync | 16 |
 
 ### TagOp
 
@@ -649,6 +652,12 @@ has no service method and no handler that executes commands.
 | member_id | 4 | str | yes | no | - |
 | source_id | 5 | str | yes | no | - |
 
+### RepoSyncRequest
+
+| Field | Tag | Type | Optional | Transient | Merge |
+| --- | --- | --- | --- | --- | --- |
+| meta | 1 | RequestMeta | no | no | - |
+
 ### MaterializeRequest
 
 | Field | Tag | Type | Optional | Transient | Merge |
@@ -798,6 +807,12 @@ has no service method and no handler that executes commands.
 | response | 1 | ResponseEnvelope | no | no | - |
 
 ### CreateRepoResponse
+
+| Field | Tag | Type | Optional | Transient | Merge |
+| --- | --- | --- | --- | --- | --- |
+| response | 1 | ResponseEnvelope | no | no | - |
+
+### RepoSyncResponse
 
 | Field | Tag | Type | Optional | Transient | Merge |
 | --- | --- | --- | --- | --- | --- |

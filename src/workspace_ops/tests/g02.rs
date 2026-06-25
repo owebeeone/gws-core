@@ -190,6 +190,124 @@ pub(crate) fn add_existing_repo_accepts_relative_path_inside_workspace() {
 }
 
 #[test]
+pub(crate) fn repo_sync_refreshes_existing_member_remotes_without_rewriting_lock() {
+    let temp = TempDir::new("repo-sync");
+    let backend = Git2Backend::new();
+    handle_create_workspace(create_workspace_request(temp.path()), "op_create").unwrap();
+    handle_create_repo(
+        &backend,
+        temp.path(),
+        create_repo_request("repos/app", None, None),
+        "op_repo",
+    )
+    .unwrap();
+    let repo_path = temp.path().join("repos/app");
+    let original_lock = read_lock(temp.path()).unwrap();
+    let commit = commit_file(&repo_path, "README.md", "one", "initial", &[]).unwrap();
+    backend
+        .add_remote(&repo_path, "origin", "git@example.invalid:org/app.git")
+        .unwrap();
+
+    let response = handle_repo_sync(
+        &backend,
+        temp.path(),
+        crate::RepoSyncRequest {
+            meta: crate::RequestMeta {
+                selection: Some(crate::Selection {
+                    paths: vec!["repos/app".to_owned()],
+                    ..Default::default()
+                }),
+                ..request_meta_with_workspace()
+            },
+        },
+        "op_repo_sync",
+    )
+    .unwrap();
+
+    assert_eq!(
+        response.response.meta.aggregate_status,
+        crate::AggregateStatus::Ok
+    );
+    let member = response.response.members.single();
+    assert_eq!(member.status, crate::MemberStatus::Ok);
+    assert_eq!(member.state.as_ref().unwrap().commit, Some(commit));
+    assert_eq!(
+        member.state.as_ref().unwrap().remotes[0].url,
+        "git@example.invalid:org/app.git"
+    );
+
+    let manifest = read_manifest(temp.path()).unwrap();
+    assert_eq!(manifest.members[0].remotes.len(), 1);
+    assert_eq!(manifest.members[0].remotes[0].name, "origin");
+    assert!(manifest.members[0].remotes[0].fetch);
+    assert!(manifest.members[0].remotes[0].push);
+    assert_eq!(
+        manifest.members[0]
+            .desired
+            .as_ref()
+            .and_then(|desired| desired.branch.as_deref()),
+        Some("main")
+    );
+    assert_eq!(
+        manifest.members[0]
+            .desired
+            .as_ref()
+            .and_then(|desired| desired.local_only),
+        None
+    );
+    assert_eq!(read_lock(temp.path()).unwrap(), original_lock);
+}
+
+#[test]
+pub(crate) fn repo_sync_dry_run_plans_without_mutating_manifest() {
+    let temp = TempDir::new("repo-sync-dry-run");
+    let backend = Git2Backend::new();
+    handle_create_workspace(create_workspace_request(temp.path()), "op_create").unwrap();
+    handle_create_repo(
+        &backend,
+        temp.path(),
+        create_repo_request("repos/app", None, None),
+        "op_repo",
+    )
+    .unwrap();
+    let repo_path = temp.path().join("repos/app");
+    commit_file(&repo_path, "README.md", "one", "initial", &[]).unwrap();
+    backend
+        .add_remote(&repo_path, "origin", "git@example.invalid:org/app.git")
+        .unwrap();
+    let original_manifest = read_manifest(temp.path()).unwrap();
+
+    let response = handle_repo_sync(
+        &backend,
+        temp.path(),
+        crate::RepoSyncRequest {
+            meta: crate::RequestMeta {
+                dry_run: Some(true),
+                selection: Some(crate::Selection {
+                    paths: vec!["repos/app".to_owned()],
+                    ..Default::default()
+                }),
+                ..request_meta_with_workspace()
+            },
+        },
+        "op_repo_sync",
+    )
+    .unwrap();
+
+    assert_eq!(
+        response.response.meta.aggregate_status,
+        crate::AggregateStatus::Accepted
+    );
+    let member = response.response.members.single();
+    assert_eq!(member.status, crate::MemberStatus::Planned);
+    assert_eq!(
+        member.planned.as_ref().unwrap().action,
+        crate::PlannedAction::WriteManifest
+    );
+    assert_eq!(read_manifest(temp.path()).unwrap(), original_manifest);
+}
+
+#[test]
 pub(crate) fn init_from_sources_derives_default_paths_and_rejects_collisions() {
     let temp = TempDir::new("init-sources");
     handle_create_workspace(create_workspace_request(temp.path()), "op_create").unwrap();

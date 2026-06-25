@@ -68,7 +68,8 @@ members:
 
 `capture`, `commit`, selected materialize targets, pull/head, and clone flows can
 rewrite the lock. The lock is written from observed post-mutation state where
-the operation changes a worktree.
+the operation changes a worktree. `repo sync` refreshes manifest metadata only;
+it does not rewrite the lock.
 
 ## Snapshots
 

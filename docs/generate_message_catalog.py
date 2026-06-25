@@ -25,6 +25,7 @@ REQUEST_MATRIX = {
     "InitFromSourcesRequest": ("InitFromSourcesResponse", "workspace_ops::handle_init_from_sources", "init"),
     "AddExistingRepoRequest": ("AddExistingRepoResponse", "workspace_ops::handle_add_existing_repo", "add"),
     "CreateRepoRequest": ("CreateRepoResponse", "workspace_ops::handle_create_repo", "repo/create"),
+    "RepoSyncRequest": ("RepoSyncResponse", "workspace_ops::handle_repo_sync", "repo/sync"),
     "MaterializeRequest": ("MaterializeResponse", "workspace_ops::handle_materialize", "materialize/clone"),
     "StatusRequest": ("StatusResponse", "status::handle_status", "status"),
     "LsRequest": ("LsResponse", "workspace_ops::handle_ls", "ls"),

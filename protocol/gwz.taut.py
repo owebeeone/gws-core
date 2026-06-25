@@ -21,6 +21,10 @@ SCHEMA = schema(
         method("create_repo", role="in",
                params=Params(request=Ref.CreateRepoRequest),
                out=Ref.CreateRepoResponse),
+        # Refresh registered member metadata from local Git repositories.
+        method("repo_sync", role="in",
+               params=Params(request=Ref.RepoSyncRequest),
+               out=Ref.RepoSyncResponse),
         # Move members to a lock/snapshot/tag/commit target.
         method("materialize", role="in",
                params=Params(request=Ref.MaterializeRequest),
@@ -92,7 +96,8 @@ SCHEMA = schema(
          commit=12,
          stage=13,
          ls=14,
-         forall=15),
+         forall=15,
+         repo_sync=16),
 
     # Operation kind for the `gwz tag` verb.
     TagOp=Enum(
@@ -667,6 +672,10 @@ SCHEMA = schema(
         member_id=F(4, STR, optional=True),
         source_id=F(5, STR, optional=True)),
 
+    # Refresh configured member metadata from local Git config.
+    RepoSyncRequest=Msg(
+        meta=F(1, Ref.RequestMeta)),
+
     # Move selected members to an explicit target.
     MaterializeRequest=Msg(
         meta=F(1, Ref.RequestMeta),
@@ -805,6 +814,9 @@ SCHEMA = schema(
         response=F(1, Ref.ResponseEnvelope)),
     # Response wrapper for create_repo.
     CreateRepoResponse=Msg(
+        response=F(1, Ref.ResponseEnvelope)),
+
+    RepoSyncResponse=Msg(
         response=F(1, Ref.ResponseEnvelope)),
     # Response wrapper for materialize.
     MaterializeResponse=Msg(

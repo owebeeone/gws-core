@@ -5,9 +5,10 @@ use std::process::Command;
 use gwz_core::{
     ActionKind, AggregateStatus, EventKind, GitBranchDifference, GitBranchGroup, GitFileChange,
     GitMemberBranchStatus, GitObjectIdentity, GwzError, GwzErrorCode, MemberResponse, MemberStatus,
-    OperationActor, OperationAttribution, OperationEvent, RequestMeta, ResponseEnvelope,
-    ResponseMeta, Severity, SourceKind, StatusMode, StatusPathStyle, StatusRequest, StatusResponse,
-    WorkspaceGitStatus, WorkspaceRootFileChange, WorkspaceRootGitStatus, decode, encode,
+    OperationActor, OperationAttribution, OperationEvent, RepoSyncRequest, RepoSyncResponse,
+    RequestMeta, ResponseEnvelope, ResponseMeta, Severity, SourceKind, StatusMode, StatusPathStyle,
+    StatusRequest, StatusResponse, WorkspaceGitStatus, WorkspaceRootFileChange,
+    WorkspaceRootGitStatus, decode, encode,
 };
 
 fn round_trip<T>(
@@ -36,6 +37,47 @@ fn status_request_round_trips() {
     assert_eq!(
         round_trip(&request, StatusRequest::to_cbor, StatusRequest::from_cbor),
         request
+    );
+}
+
+#[test]
+fn repo_sync_request_and_response_round_trip() {
+    let request = RepoSyncRequest {
+        meta: RequestMeta {
+            request_id: "req-sync".to_owned(),
+            schema_version: "gwz.v0".to_owned(),
+            ..RequestMeta::default()
+        },
+    };
+    assert_eq!(
+        round_trip(
+            &request,
+            RepoSyncRequest::to_cbor,
+            RepoSyncRequest::from_cbor
+        ),
+        request
+    );
+
+    let response = RepoSyncResponse {
+        response: ResponseEnvelope {
+            meta: ResponseMeta {
+                request_id: "req-sync".to_owned(),
+                schema_version: "gwz.v0".to_owned(),
+                action: ActionKind::RepoSync,
+                aggregate_status: AggregateStatus::Ok,
+                ..ResponseMeta::default()
+            },
+            members: Vec::new(),
+            errors: Vec::new(),
+        },
+    };
+    assert_eq!(
+        round_trip(
+            &response,
+            RepoSyncResponse::to_cbor,
+            RepoSyncResponse::from_cbor
+        ),
+        response
     );
 }
 

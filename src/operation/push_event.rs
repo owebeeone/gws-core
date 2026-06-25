@@ -26,6 +26,7 @@ pub enum ActionKind {
     Stage,
     Ls,
     Forall,
+    RepoSync,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -86,6 +87,7 @@ pub enum OperationRequest {
     InitFromSources(crate::InitFromSourcesRequest),
     AddExistingRepo(crate::AddExistingRepoRequest),
     CreateRepo(crate::CreateRepoRequest),
+    RepoSync(crate::RepoSyncRequest),
     Materialize(crate::MaterializeRequest),
     Status(crate::StatusRequest),
     Snapshot(crate::SnapshotRequest),
@@ -106,6 +108,7 @@ impl OperationRequest {
             Self::InitFromSources(request) => (ActionKind::InitFromSources, &request.meta),
             Self::AddExistingRepo(request) => (ActionKind::AddExistingRepo, &request.meta),
             Self::CreateRepo(request) => (ActionKind::CreateRepo, &request.meta),
+            Self::RepoSync(request) => (ActionKind::RepoSync, &request.meta),
             Self::Materialize(request) => (ActionKind::Materialize, &request.meta),
             Self::Status(request) => (ActionKind::Status, &request.meta),
             Self::Snapshot(request) => (ActionKind::Snapshot, &request.meta),
@@ -515,6 +518,7 @@ impl From<ActionKind> for crate::ActionKind {
             ActionKind::Stage => Self::Stage,
             ActionKind::Ls => Self::Ls,
             ActionKind::Forall => Self::Forall,
+            ActionKind::RepoSync => Self::RepoSync,
         }
     }
 }

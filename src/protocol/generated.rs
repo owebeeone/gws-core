@@ -20,6 +20,7 @@ pub enum ActionKind {
     Stage,
     Ls,
     Forall,
+    RepoSync,
 }
 impl ActionKind {
     pub fn wire(self) -> i64 { match self {
@@ -39,6 +40,7 @@ impl ActionKind {
         Self::Stage => 13,
         Self::Ls => 14,
         Self::Forall => 15,
+        Self::RepoSync => 16,
     } }
     pub fn from_wire(v: i64) -> Self { match v {
         0 => Self::CreateWorkspace,
@@ -57,6 +59,7 @@ impl ActionKind {
         13 => Self::Stage,
         14 => Self::Ls,
         15 => Self::Forall,
+        16 => Self::RepoSync,
         _ => panic!("bad ActionKind wire value {}", v),
     } }
 }
@@ -1652,6 +1655,23 @@ impl CreateRepoRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
+pub struct RepoSyncRequest {
+    pub meta: RequestMeta,
+}
+impl RepoSyncRequest {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, self.meta.to_cbor()),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            meta: RequestMeta::from_cbor(c.get(1)),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
 pub struct MaterializeRequest {
     pub meta: RequestMeta,
     pub target: MaterializeTarget,
@@ -2081,6 +2101,23 @@ pub struct CreateRepoResponse {
     pub response: ResponseEnvelope,
 }
 impl CreateRepoResponse {
+    pub fn to_cbor(&self) -> Cbor {
+        Cbor::Map(vec![
+            (1, self.response.to_cbor()),
+        ])
+    }
+    pub fn from_cbor(c: &Cbor) -> Self {
+        Self {
+            response: ResponseEnvelope::from_cbor(c.get(1)),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct RepoSyncResponse {
+    pub response: ResponseEnvelope,
+}
+impl RepoSyncResponse {
     pub fn to_cbor(&self) -> Cbor {
         Cbor::Map(vec![
             (1, self.response.to_cbor()),

@@ -7,7 +7,7 @@ use crate::artifact::{
     self, ArtifactSourceKind, DesiredRefArtifact, LockArtifact, ManifestArtifact, ManifestMember,
     RemoteArtifact, ResolvedMemberArtifact, WorkspaceHeader,
 };
-use crate::git::{Git2Backend, GitBackend, GitHeadState, GitStatus};
+use crate::git::{Git2Backend, GitBackend, GitHeadState, GitRemote, GitStatus};
 use crate::model::{ErrorCode, MemberId, ModelError, ModelResult, SourceId};
 use crate::operation::OperationRequest;
 use crate::workspace::{
@@ -229,6 +229,256 @@ where
             }],
         ),
     })
+}
+
+pub fn handle_repo_sync<B>(
+    backend: &B,
+    start: &Path,
+    request: crate::RepoSyncRequest,
+    operation_id: impl Into<String>,
+) -> ModelResult<crate::RepoSyncResponse>
+where
+    B: GitBackend,
+{
+    let context = OperationRequest::RepoSync(request.clone()).context(operation_id.into())?;
+    let root = resolve_workspace_root(start, request.meta.workspace.as_ref())?;
+    let manifest = artifact::read_manifest(&root)?;
+    assert_workspace_id(&manifest, request.meta.workspace.as_ref())?;
+    let selected = resolve_manifest_selection(&manifest, request.meta.selection.as_ref())?;
+    let dry_run = request.meta.dry_run.unwrap_or(false);
+
+    let mut plans = Vec::new();
+    let mut responses = Vec::new();
+    for member_id in selected {
+        let Some((index, member)) = manifest
+            .members
+            .iter()
+            .enumerate()
+            .find(|(_, member)| member.id == member_id)
+        else {
+            return Err(ModelError::new(
+                ErrorCode::MemberNotFound,
+                "member not found",
+            ));
+        };
+        match repo_sync_plan_member(backend, &root, member, dry_run) {
+            Ok(plan) => {
+                responses.push(plan.response.clone());
+                plans.push((index, plan));
+            }
+            Err(response) => responses.push(response),
+        }
+    }
+
+    if dry_run
+        || responses.iter().any(|response| {
+            matches!(
+                response.status,
+                crate::MemberStatus::Rejected | crate::MemberStatus::Failed
+            )
+        })
+    {
+        return Ok(crate::RepoSyncResponse {
+            response: response_envelope(context, repo_sync_aggregate(&responses), responses),
+        });
+    }
+
+    if plans.iter().any(|(_, plan)| plan.changed) {
+        let mut next = manifest;
+        for (index, plan) in plans {
+            if plan.changed {
+                next.members[index] = plan.member;
+            }
+        }
+        next.validate()?;
+        artifact::write_manifest(&root, &next)?;
+    }
+
+    Ok(crate::RepoSyncResponse {
+        response: response_envelope(context, repo_sync_aggregate(&responses), responses),
+    })
+}
+
+#[derive(Clone, Debug)]
+struct RepoSyncPlan {
+    member: ManifestMember,
+    changed: bool,
+    response: crate::MemberResponse,
+}
+
+fn repo_sync_plan_member<B>(
+    backend: &B,
+    root: &Path,
+    member: &ManifestMember,
+    dry_run: bool,
+) -> Result<RepoSyncPlan, crate::MemberResponse>
+where
+    B: GitBackend,
+{
+    let source_kind = artifact_source_kind_to_protocol(member.source_kind);
+    if member.source_kind != ArtifactSourceKind::Git {
+        return Err(repo_sync_member_error(
+            member,
+            source_kind,
+            ModelError::new(
+                ErrorCode::UnsupportedSourceKind,
+                "repo sync supports git members only",
+            ),
+            crate::MemberStatus::Rejected,
+        ));
+    }
+
+    let member_root = root.join(&member.path);
+    match backend.is_repository(&member_root) {
+        Ok(true) => {}
+        Ok(false) => {
+            return Err(repo_sync_member_error(
+                member,
+                source_kind,
+                ModelError::new(ErrorCode::MemberNotFound, "member is not materialized"),
+                crate::MemberStatus::Rejected,
+            ));
+        }
+        Err(error) => {
+            return Err(repo_sync_member_error(
+                member,
+                source_kind,
+                error,
+                crate::MemberStatus::Failed,
+            ));
+        }
+    }
+
+    let head = backend.head(&member_root).map_err(|error| {
+        repo_sync_member_error(member, source_kind, error, crate::MemberStatus::Failed)
+    })?;
+    let status = backend.status(&member_root).map_err(|error| {
+        repo_sync_member_error(member, source_kind, error, crate::MemberStatus::Failed)
+    })?;
+    let git_remotes = backend.remotes(&member_root).map_err(|error| {
+        repo_sync_member_error(member, source_kind, error, crate::MemberStatus::Failed)
+    })?;
+
+    let mut next = member.clone();
+    next.remotes = sync_member_remotes(&member.remotes, &git_remotes);
+    if !next.remotes.is_empty() {
+        next.desired = Some(desired_from_head(&head));
+    }
+    let changed = &next != member;
+    let state = resolved_member(&next, &head, &status);
+    let response_status = if dry_run && changed {
+        crate::MemberStatus::Planned
+    } else if changed {
+        crate::MemberStatus::Ok
+    } else {
+        crate::MemberStatus::Noop
+    };
+    let planned = (dry_run && changed).then(|| crate::PlannedChange {
+        action: crate::PlannedAction::WriteManifest,
+        from_ref: None,
+        to_ref: head.branch.clone().or(head.commit.clone()),
+        message: Some("sync repository metadata from local git config".to_owned()),
+    });
+
+    Ok(RepoSyncPlan {
+        member: next.clone(),
+        changed,
+        response: crate::MemberResponse {
+            member_id: next.id.clone(),
+            member_path: next.path.clone(),
+            source_kind,
+            status: response_status,
+            error: None,
+            planned,
+            state: Some(protocol_state(&next, &state)),
+            git_status: None,
+            lock_match: None,
+        },
+    })
+}
+
+fn sync_member_remotes(existing: &[RemoteArtifact], observed: &[GitRemote]) -> Vec<RemoteArtifact> {
+    let observed_by_name = observed
+        .iter()
+        .map(|remote| (remote.name.as_str(), remote))
+        .collect::<BTreeMap<_, _>>();
+    let mut synced = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for remote in existing {
+        if let Some(observed) = observed_by_name.get(remote.name.as_str()) {
+            synced.push(RemoteArtifact {
+                name: remote.name.clone(),
+                url: observed.url.clone().unwrap_or_else(|| remote.url.clone()),
+                fetch: remote.fetch,
+                push: remote.push,
+            });
+        } else {
+            synced.push(remote.clone());
+        }
+        seen.insert(remote.name.clone());
+    }
+    for remote in observed {
+        if seen.insert(remote.name.clone()) {
+            synced.push(RemoteArtifact {
+                name: remote.name.clone(),
+                url: remote.url.clone().unwrap_or_default(),
+                fetch: true,
+                push: true,
+            });
+        }
+    }
+    synced
+}
+
+fn repo_sync_member_error(
+    member: &ManifestMember,
+    source_kind: crate::SourceKind,
+    error: ModelError,
+    status: crate::MemberStatus,
+) -> crate::MemberResponse {
+    crate::MemberResponse {
+        member_id: member.id.clone(),
+        member_path: member.path.clone(),
+        source_kind,
+        status,
+        error: Some(crate::GwzError {
+            code: error.code.into(),
+            message: error.message,
+            member_id: Some(member.id.clone()),
+            member_path: Some(member.path.clone()),
+            detail: None,
+        }),
+        planned: None,
+        state: None,
+        git_status: None,
+        lock_match: None,
+    }
+}
+
+fn repo_sync_aggregate(responses: &[crate::MemberResponse]) -> crate::AggregateStatus {
+    if responses
+        .iter()
+        .any(|response| response.status == crate::MemberStatus::Failed)
+    {
+        crate::AggregateStatus::Failed
+    } else if responses
+        .iter()
+        .any(|response| response.status == crate::MemberStatus::Rejected)
+    {
+        crate::AggregateStatus::Rejected
+    } else if responses
+        .iter()
+        .any(|response| response.status == crate::MemberStatus::Planned)
+    {
+        crate::AggregateStatus::Accepted
+    } else if responses
+        .iter()
+        .all(|response| response.status == crate::MemberStatus::Noop)
+    {
+        crate::AggregateStatus::Noop
+    } else {
+        crate::AggregateStatus::Ok
+    }
 }
 
 pub fn resolve_workspace_root(

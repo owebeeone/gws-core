@@ -26,7 +26,7 @@ use gwz_core::git::Git2Backend;
 use gwz_core::operation::NullSink;
 use gwz_core::workspace_ops::{
     handle_capture, handle_commit, handle_create_repo, handle_ls, handle_materialize,
-    handle_pull_head, handle_push, handle_stage, handle_tag,
+    handle_pull_head, handle_push, handle_repo_sync, handle_stage, handle_tag,
 };
 use gwz_core::{RequestMeta, Selection, WorkspaceRef};
 ```
@@ -39,6 +39,7 @@ use gwz_core::{RequestMeta, Selection, WorkspaceRef};
 | `InitFromSourcesRequest` | `workspace_ops::handle_init_from_sources` |
 | `AddExistingRepoRequest` | `workspace_ops::handle_add_existing_repo` |
 | `CreateRepoRequest` | `workspace_ops::handle_create_repo` |
+| `RepoSyncRequest` | `workspace_ops::handle_repo_sync` |
 | `MaterializeRequest` | `workspace_ops::handle_materialize` |
 | `StatusRequest` | `status::handle_status` |
 | `LsRequest` | `workspace_ops::handle_ls` |

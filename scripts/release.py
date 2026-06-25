@@ -46,6 +46,7 @@ from pathlib import Path
 # scripts/release.py -> the gwz-core repo root is one level up.
 REPO = Path(__file__).resolve().parent.parent
 REGEN = REPO / "protocol" / "regen.py"
+REGEN_VENV = REPO / "protocol" / ".regen-venv"
 
 
 def fail(msg: str):
@@ -57,7 +58,7 @@ def log(msg: str):
     print(f"release: {msg}")
 
 
-def run(cmd, *, cwd=None, capture=False, check=True) -> subprocess.CompletedProcess:
+def run(cmd, *, cwd=None, capture=False, check=True, env=None) -> subprocess.CompletedProcess:
     printable = " ".join(str(c) for c in cmd)
     log(f"$ {printable}")
     result = subprocess.run(
@@ -65,12 +66,33 @@ def run(cmd, *, cwd=None, capture=False, check=True) -> subprocess.CompletedProc
         cwd=str(cwd) if cwd is not None else None,
         capture_output=capture,
         text=True,
+        env=env,
     )
     if check and result.returncode != 0:
         if capture and result.stderr:
             print(result.stderr, file=sys.stderr)
         fail(f"command failed ({result.returncode}): {printable}")
     return result
+
+
+def regen_python() -> Path:
+    """Python from protocol/.regen-venv (PyPI taut-proto), matching CI's taut install."""
+    suffix = ".exe" if os.name == "nt" else ""
+    bindir = "Scripts" if os.name == "nt" else "bin"
+    py = REGEN_VENV / bindir / f"python{suffix}"
+    if not py.is_file():
+        fail(
+            "protocol/.regen-venv not found -- run `python protocol/regen.py --check` "
+            "(or drop --skip-regen-check) so taut-proto is available for cargo tests"
+        )
+    return py
+
+
+def cargo_env() -> dict[str, str]:
+    """Env for cargo test/clippy: TAUT_PYTHON must see taut-proto (see tests/protocol.rs)."""
+    env = os.environ.copy()
+    env["TAUT_PYTHON"] = str(regen_python())
+    return env
 
 
 def run_fmt_check(*, cargo_root: Path):
@@ -268,19 +290,21 @@ def run_gates(*, cargo_root: Path, skip_regen: bool, no_test: bool, no_clippy: b
         if not REGEN.is_file():
             fail(f"protocol regen script not found at {REGEN}")
         run([sys.executable, str(REGEN), "--check"], cwd=REPO)
-    else:
-        log("skipping protocol/regen.py --check")
+    elif not no_test:
+        # generated_protocol_is_current needs taut-proto even when --skip-regen-check.
+        regen_python()
 
     run_fmt_check(cargo_root=cargo_root)
     assert_lock_current(cargo_root=cargo_root)
+    test_env = cargo_env()
 
     if not no_test:
-        run(["cargo", "test", "--locked"], cwd=cargo_root)
+        run(["cargo", "test", "--locked"], cwd=cargo_root, env=test_env)
     else:
         log("skipping `cargo test`")
 
     if not no_clippy:
-        run(["cargo", "clippy", "--all-targets", "--", "-D", "warnings"], cwd=cargo_root)
+        run(["cargo", "clippy", "--all-targets", "--", "-D", "warnings"], cwd=cargo_root, env=test_env)
     else:
         log("skipping `cargo clippy`")
 
@@ -372,7 +396,7 @@ def main():
             refresh_cargo_lock(cargo_root=cargo_root)
             if worktree is not None:
                 copy_lock_from_cargo_root(cargo_root)
-            run(["cargo", "test", "--locked"], cwd=cargo_root)
+            run(["cargo", "test", "--locked"], cwd=cargo_root, env=cargo_env())
             git(["add", "Cargo.toml", "Cargo.lock"])
             message = (
                 f"chore(release): gwz-core {version}\n\n"

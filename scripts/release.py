@@ -16,6 +16,10 @@ Requires a clean working tree (land feature work first). The commit is skipped w
 is an idempotent no-op (and will create the tag if a prior run stopped before tagging).
 Pushing is left to you unless ``--push`` is given.
 
+When gwz-core is checked out inside the gwz-dev umbrella workspace, ``cargo`` commands
+run in a temporary detached worktree under ``/tmp`` so they use gwz-core's own
+``Cargo.lock`` (not ``../Cargo.lock``). CI and standalone checkouts are unaffected.
+
 This operates on your LOCAL ``main`` ref and does not fetch; it warns if ``main`` is
 behind its upstream. Pull first if you want the latest.
 
@@ -25,15 +29,18 @@ Usage:
     python scripts/release.py vX.Y.Z --no-test      # skip `cargo test` (still runs clippy)
     python scripts/release.py vX.Y.Z --no-clippy    # skip `cargo clippy`
     python scripts/release.py vX.Y.Z --skip-regen-check
+    python scripts/release.py vX.Y.Z --keep-worktree
 """
 
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 # scripts/release.py -> the gwz-core repo root is one level up.
@@ -66,8 +73,8 @@ def run(cmd, *, cwd=None, capture=False, check=True) -> subprocess.CompletedProc
     return result
 
 
-def run_fmt_check():
-    result = run(["cargo", "fmt", "--check"], cwd=REPO, check=False)
+def run_fmt_check(*, cargo_root: Path):
+    result = run(["cargo", "fmt", "--check"], cwd=cargo_root, check=False)
     if result.returncode != 0:
         print(
             "\nrelease: rustfmt check failed. Run this from the gwz-core repo root, "
@@ -76,6 +83,43 @@ def run_fmt_check():
             file=sys.stderr,
         )
         fail(f"command failed ({result.returncode}): cargo fmt --check")
+
+
+def parent_cargo_workspace_root(start: Path) -> Path | None:
+    """Return the nearest ancestor Cargo workspace root, if any."""
+    for directory in (start, *start.parents):
+        manifest = directory / "Cargo.toml"
+        if not manifest.is_file():
+            continue
+        text = manifest.read_text(encoding="utf-8")
+        if re.search(r"^\[workspace\]", text, flags=re.M):
+            return directory
+    return None
+
+
+def make_standalone_worktree(label: str) -> Path:
+    """Checkout HEAD in /tmp so cargo does not join a parent gwz-dev workspace."""
+    git(["worktree", "prune"], check=False)
+    path = Path(tempfile.gettempdir()) / f"gwz-core-{label}-{os.getpid()}"
+    if path.exists():
+        fail(f"standalone worktree path already exists: {path}")
+    head = git(["rev-parse", "HEAD"], capture=True).stdout.strip()
+    git(["worktree", "add", "--detach", path, head])
+    log(f"standalone cargo worktree -> {path}")
+    return path
+
+
+def remove_standalone_worktree(path: Path):
+    result = git(["worktree", "remove", "--force", path], capture=True, check=False)
+    if result.returncode != 0:
+        log(f"WARNING: `git worktree remove` failed for {path}: {result.stderr.strip()}")
+        shutil.rmtree(path, ignore_errors=True)
+    git(["worktree", "prune"], check=False)
+
+
+def sync_manifests_to_worktree(worktree: Path):
+    for name in ("Cargo.toml", "Cargo.lock"):
+        shutil.copy2(REPO / name, worktree / name)
 
 
 def git(args, **kw) -> subprocess.CompletedProcess:
@@ -208,7 +252,7 @@ def push_release(branch: str, tag: str):
     log(f"pushed {branch} + {tag} to origin (atomic)")
 
 
-def run_gates(*, skip_regen: bool, no_test: bool, no_clippy: bool):
+def run_gates(*, cargo_root: Path, skip_regen: bool, no_test: bool, no_clippy: bool):
     if not skip_regen:
         if not REGEN.is_file():
             fail(f"protocol regen script not found at {REGEN}")
@@ -216,15 +260,15 @@ def run_gates(*, skip_regen: bool, no_test: bool, no_clippy: bool):
     else:
         log("skipping protocol/regen.py --check")
 
-    run_fmt_check()
+    run_fmt_check(cargo_root=cargo_root)
 
     if not no_test:
-        run(["cargo", "test", "--locked"], cwd=REPO)
+        run(["cargo", "test", "--locked"], cwd=cargo_root)
     else:
         log("skipping `cargo test`")
 
     if not no_clippy:
-        run(["cargo", "clippy", "--all-targets", "--", "-D", "warnings"], cwd=REPO)
+        run(["cargo", "clippy", "--all-targets", "--", "-D", "warnings"], cwd=cargo_root)
     else:
         log("skipping `cargo clippy`")
 
@@ -243,6 +287,11 @@ def main():
         help="skip `python protocol/regen.py --check`",
     )
     parser.add_argument("--push", action="store_true", help="also push the branch + tag to origin")
+    parser.add_argument(
+        "--keep-worktree",
+        action="store_true",
+        help="leave the temp cargo worktree in place (you must `git worktree remove` it before re-running)",
+    )
     args = parser.parse_args()
 
     tag = args.tag
@@ -285,37 +334,61 @@ def main():
             push_release(args.branch, tag)
         return
 
-    run_gates(
-        skip_regen=args.skip_regen_check,
-        no_test=args.no_test,
-        no_clippy=args.no_clippy,
-    )
-
-    changed = bump_cargo_version(version)
-    lock_changed = sync_cargo_lock_version(version)
-    if changed or lock_changed:
-        run(["cargo", "test", "--locked"], cwd=REPO)
-        git(["add", "Cargo.toml", "Cargo.lock"])
-        message = (
-            f"chore(release): gwz-core {version}\n\n"
-            "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+    umbrella = parent_cargo_workspace_root(REPO)
+    cargo_root = REPO
+    worktree: Path | None = None
+    if umbrella is not None and umbrella != REPO:
+        log(
+            f"gwz-core checkout sits under umbrella workspace {umbrella} -- "
+            "cargo gates will run in a detached /tmp worktree"
         )
-        git(["commit", "-m", message])
-        head = git(["rev-parse", "HEAD"], capture=True).stdout.strip()
-        log(f"release commit -> {head[:10]}  (gwz-core {version})")
-    else:
-        current = read_package_version()
-        if current != version:
-            fail(f"Cargo.toml version is {current}, expected {version} for {tag}")
-        log(f"{args.branch} already at version {version}; no new commit needed")
+        worktree = make_standalone_worktree(tag)
+        cargo_root = worktree
 
-    ensure_tag(tag, head)
+    try:
+        run_gates(
+            cargo_root=cargo_root,
+            skip_regen=args.skip_regen_check,
+            no_test=args.no_test,
+            no_clippy=args.no_clippy,
+        )
 
-    if args.push:
-        push_release(args.branch, tag)
-    else:
-        log("next step (not done without --push):")
-        log(f"  git -C {REPO} push origin {args.branch} {tag}")
+        changed = bump_cargo_version(version)
+        lock_changed = sync_cargo_lock_version(version)
+        if changed or lock_changed:
+            if worktree is not None:
+                sync_manifests_to_worktree(worktree)
+            run(["cargo", "test", "--locked"], cwd=cargo_root)
+            git(["add", "Cargo.toml", "Cargo.lock"])
+            message = (
+                f"chore(release): gwz-core {version}\n\n"
+                "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+            )
+            git(["commit", "-m", message])
+            head = git(["rev-parse", "HEAD"], capture=True).stdout.strip()
+            log(f"release commit -> {head[:10]}  (gwz-core {version})")
+        else:
+            current = read_package_version()
+            if current != version:
+                fail(f"Cargo.toml version is {current}, expected {version} for {tag}")
+            log(f"{args.branch} already at version {version}; no new commit needed")
+
+        ensure_tag(tag, head)
+
+        if args.push:
+            push_release(args.branch, tag)
+        else:
+            log("next step (not done without --push):")
+            log(f"  git -C {REPO} push origin {args.branch} {tag}")
+    finally:
+        if worktree is not None:
+            if args.keep_worktree:
+                log(
+                    f"left cargo worktree at {worktree} "
+                    "(remove it before the next run: git worktree remove)"
+                )
+            else:
+                remove_standalone_worktree(worktree)
 
 
 if __name__ == "__main__":

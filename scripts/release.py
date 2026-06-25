@@ -6,7 +6,7 @@ automates RELEASE.md steps 1-4 for a given tag:
 
   1. Gate the tree: ``python protocol/regen.py --check``, ``cargo fmt --check``,
      ``cargo test --locked``, ``cargo clippy --all-targets -- -D warnings`` (same bar as CI).
-  2. Bump ``version`` in ``Cargo.toml`` and sync the gwz-core entry in ``Cargo.lock``.
+  2. Bump ``version`` in ``Cargo.toml`` and refresh ``Cargo.lock`` via ``cargo generate-lockfile``.
   3. Commit on ``main``: ``chore(release): gwz-core X.Y.Z``.
   4. Tag that commit ``vX.Y.Z`` (lightweight). An existing tag is NEVER moved — if
      ``vX.Y.Z`` already points elsewhere the script aborts.
@@ -118,8 +118,7 @@ def remove_standalone_worktree(path: Path):
 
 
 def sync_manifests_to_worktree(worktree: Path):
-    for name in ("Cargo.toml", "Cargo.lock"):
-        shutil.copy2(REPO / name, worktree / name)
+    shutil.copy2(REPO / "Cargo.toml", worktree / "Cargo.toml")
 
 
 def git(args, **kw) -> subprocess.CompletedProcess:
@@ -193,26 +192,38 @@ def bump_cargo_version(version: str) -> bool:
     return True
 
 
-def sync_cargo_lock_version(version: str) -> bool:
-    """Keep the gwz-core package entry in Cargo.lock aligned with Cargo.toml."""
-    path = REPO / "Cargo.lock"
-    if not path.is_file():
-        fail("Cargo.lock not found -- run `cargo generate-lockfile` first")
-    text = path.read_text(encoding="utf-8")
-    updated = re.sub(
-        r'(\[\[package\]\]\nname = "gwz-core"\nversion = )"[^"]*"',
-        rf'\g<1>"{version}"',
-        text,
-        count=1,
+def assert_lock_current(*, cargo_root: Path):
+    """Fail fast when Cargo.lock does not match Cargo.toml (e.g. new dep without lock update)."""
+    result = run(
+        ["cargo", "metadata", "--format-version", "1", "--locked"],
+        cwd=cargo_root,
+        capture=True,
+        check=False,
     )
-    if updated == text:
-        if f'name = "gwz-core"\nversion = "{version}"' in text:
-            log(f"Cargo.lock already pins gwz-core {version}")
-            return False
-        fail("Cargo.lock has no gwz-core package entry to update")
-    path.write_text(updated, encoding="utf-8", newline="\n")
-    log(f"synced Cargo.lock gwz-core version -> {version}")
+    if result.returncode == 0:
+        return
+    fail(
+        "Cargo.lock is out of sync with Cargo.toml.\n"
+        "  Fix: from a standalone gwz-core checkout (outside the gwz-dev workspace), run\n"
+        "       `cargo generate-lockfile`, commit Cargo.lock, then re-run this script."
+    )
+
+
+def refresh_cargo_lock(*, cargo_root: Path) -> bool:
+    """Regenerate Cargo.lock from Cargo.toml. Returns True if the lock file changed."""
+    lock = cargo_root / "Cargo.lock"
+    before = lock.read_text(encoding="utf-8") if lock.is_file() else ""
+    run(["cargo", "generate-lockfile"], cwd=cargo_root)
+    after = lock.read_text(encoding="utf-8")
+    if after == before:
+        log("Cargo.lock already matches Cargo.toml")
+        return False
+    log("refreshed Cargo.lock from Cargo.toml")
     return True
+
+
+def copy_lock_from_cargo_root(cargo_root: Path):
+    shutil.copy2(cargo_root / "Cargo.lock", REPO / "Cargo.lock")
 
 
 def ensure_tag(tag: str, target: str):
@@ -261,6 +272,7 @@ def run_gates(*, cargo_root: Path, skip_regen: bool, no_test: bool, no_clippy: b
         log("skipping protocol/regen.py --check")
 
     run_fmt_check(cargo_root=cargo_root)
+    assert_lock_current(cargo_root=cargo_root)
 
     if not no_test:
         run(["cargo", "test", "--locked"], cwd=cargo_root)
@@ -353,11 +365,13 @@ def main():
             no_clippy=args.no_clippy,
         )
 
-        changed = bump_cargo_version(version)
-        lock_changed = sync_cargo_lock_version(version)
-        if changed or lock_changed:
+        toml_changed = bump_cargo_version(version)
+        if toml_changed:
             if worktree is not None:
                 sync_manifests_to_worktree(worktree)
+            refresh_cargo_lock(cargo_root=cargo_root)
+            if worktree is not None:
+                copy_lock_from_cargo_root(cargo_root)
             run(["cargo", "test", "--locked"], cwd=cargo_root)
             git(["add", "Cargo.toml", "Cargo.lock"])
             message = (

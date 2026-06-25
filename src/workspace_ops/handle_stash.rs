@@ -356,10 +356,8 @@ fn stash_member_plans<'a, B: GitBackend>(
             ));
         }
         let head = backend.head(&member_root)?;
-        let status = backend.status_with_options(
-            &member_root,
-            GitStatusOptions { include_ignored },
-        )?;
+        let status =
+            backend.status_with_options(&member_root, GitStatusOptions { include_ignored })?;
         plans.push(StashMemberPlan {
             member,
             root: member_root,
@@ -547,9 +545,10 @@ fn append_orphan_warnings<B: GitBackend>(
         }
     }
     for (stash_id, warning) in orphan_warnings {
-        if let Some(bundle) = bundles.iter_mut().find(|bundle| {
-            bundle.stash_id == stash_id && bundle.members.is_empty()
-        }) {
+        if let Some(bundle) = bundles
+            .iter_mut()
+            .find(|bundle| bundle.stash_id == stash_id && bundle.members.is_empty())
+        {
             bundle.warnings.push(warning);
         } else {
             bundles.push(orphan_warning_bundle(workspace_id, stash_id, warning));

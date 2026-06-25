@@ -4,9 +4,9 @@
 gwz-core has no release branch — tags are cut directly on ``main``. This script
 automates RELEASE.md steps 1-4 for a given tag:
 
-  1. Gate the tree: ``python protocol/regen.py --check``, ``cargo test --locked``,
-     ``cargo clippy --all-targets -- -D warnings`` (same bar as CI).
-  2. Bump ``version`` in ``Cargo.toml`` to match the tag (``vX.Y.Z`` -> ``X.Y.Z``).
+  1. Gate the tree: ``python protocol/regen.py --check``, ``cargo fmt --check``,
+     ``cargo test --locked``, ``cargo clippy --all-targets -- -D warnings`` (same bar as CI).
+  2. Bump ``version`` in ``Cargo.toml`` and sync the gwz-core entry in ``Cargo.lock``.
   3. Commit on ``main``: ``chore(release): gwz-core X.Y.Z``.
   4. Tag that commit ``vX.Y.Z`` (lightweight). An existing tag is NEVER moved — if
      ``vX.Y.Z`` already points elsewhere the script aborts.
@@ -64,6 +64,18 @@ def run(cmd, *, cwd=None, capture=False, check=True) -> subprocess.CompletedProc
             print(result.stderr, file=sys.stderr)
         fail(f"command failed ({result.returncode}): {printable}")
     return result
+
+
+def run_fmt_check():
+    result = run(["cargo", "fmt", "--check"], cwd=REPO, check=False)
+    if result.returncode != 0:
+        print(
+            "\nrelease: rustfmt check failed. Run this from the gwz-core repo root, "
+            "then stage the resulting formatting changes:\n"
+            "  cargo fmt\n",
+            file=sys.stderr,
+        )
+        fail(f"command failed ({result.returncode}): cargo fmt --check")
 
 
 def git(args, **kw) -> subprocess.CompletedProcess:
@@ -137,6 +149,28 @@ def bump_cargo_version(version: str) -> bool:
     return True
 
 
+def sync_cargo_lock_version(version: str) -> bool:
+    """Keep the gwz-core package entry in Cargo.lock aligned with Cargo.toml."""
+    path = REPO / "Cargo.lock"
+    if not path.is_file():
+        fail("Cargo.lock not found -- run `cargo generate-lockfile` first")
+    text = path.read_text(encoding="utf-8")
+    updated = re.sub(
+        r'(\[\[package\]\]\nname = "gwz-core"\nversion = )"[^"]*"',
+        rf'\g<1>"{version}"',
+        text,
+        count=1,
+    )
+    if updated == text:
+        if f'name = "gwz-core"\nversion = "{version}"' in text:
+            log(f"Cargo.lock already pins gwz-core {version}")
+            return False
+        fail("Cargo.lock has no gwz-core package entry to update")
+    path.write_text(updated, encoding="utf-8", newline="\n")
+    log(f"synced Cargo.lock gwz-core version -> {version}")
+    return True
+
+
 def ensure_tag(tag: str, target: str):
     """Create the lightweight tag ``tag`` at commit ``target``, or no-op if it already points there.
     NEVER moves an existing tag -- released tags are immutable."""
@@ -181,6 +215,8 @@ def run_gates(*, skip_regen: bool, no_test: bool, no_clippy: bool):
         run([sys.executable, str(REGEN), "--check"], cwd=REPO)
     else:
         log("skipping protocol/regen.py --check")
+
+    run_fmt_check()
 
     if not no_test:
         run(["cargo", "test", "--locked"], cwd=REPO)
@@ -256,8 +292,10 @@ def main():
     )
 
     changed = bump_cargo_version(version)
-    if changed:
-        git(["add", "Cargo.toml"])
+    lock_changed = sync_cargo_lock_version(version)
+    if changed or lock_changed:
+        run(["cargo", "test", "--locked"], cwd=REPO)
+        git(["add", "Cargo.toml", "Cargo.lock"])
         message = (
             f"chore(release): gwz-core {version}\n\n"
             "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"

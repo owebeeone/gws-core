@@ -153,9 +153,11 @@ where
         &root,
         &manifest,
         plans,
-        rewrite_lock,
-        follow_branch_head,
-        request.meta.policy.as_ref(),
+        MaterializeApplyOptions {
+            rewrite_lock,
+            follow_branch_head,
+            policy: request.meta.policy.as_ref(),
+        },
         context,
         &emitter,
     );
@@ -206,22 +208,31 @@ where
     Ok((plans, rewrite_lock))
 }
 
+struct MaterializeApplyOptions<'a> {
+    rewrite_lock: bool,
+    // True for the lock target (and clone): detached:false members follow their branch
+    // head. False for snapshot/tag: pin the recorded commit so the capture is reproducible.
+    follow_branch_head: bool,
+    policy: Option<&'a crate::OperationPolicy>,
+}
+
 fn apply_materialize_plans<B>(
     backend: &B,
     root: &Path,
     manifest: &ManifestArtifact,
     plans: Vec<MaterializePlan>,
-    rewrite_lock: bool,
-    // True for the lock target (and clone): detached:false members follow their branch
-    // head. False for snapshot/tag: pin the recorded commit so the capture is reproducible.
-    follow_branch_head: bool,
-    policy: Option<&crate::OperationPolicy>,
+    options: MaterializeApplyOptions<'_>,
     context: crate::operation::OperationContext,
     emitter: &EventEmitter<'_>,
 ) -> ModelResult<crate::MaterializeResponse>
 where
     B: GitBackend + Sync,
 {
+    let MaterializeApplyOptions {
+        rewrite_lock,
+        follow_branch_head,
+        policy,
+    } = options;
     // F2: the fresh clones this op will create — rolled back on any mid-batch
     // failure (Q6 reject-partial) so no orphan repos are left behind.
     let fresh_clone_paths: Vec<_> = plans
@@ -337,18 +348,18 @@ where
 
     if rewrite_lock {
         // F1: write the lock from the observed post-mutation state, not the plan.
-        let mut lock = read_lock_or_empty(&root, &manifest.workspace.id)?;
+        let mut lock = read_lock_or_empty(root, &manifest.workspace.id)?;
         for (member_id, observed) in &observed_states {
             lock.members.insert(member_id.clone(), observed.clone());
         }
         lock.created_at = now_marker();
-        artifact::write_lock(&root, &lock)?;
+        artifact::write_lock(root, &lock)?;
     }
 
     // Refresh the workspace boundary (member + tmp excludes) from the authoritative
     // on-disk lock (rewritten above, or the existing one for a lock target).
-    let lock = artifact::read_lock(&root)?;
-    sync_workspace_boundary(backend, &root, &lock)?;
+    let lock = artifact::read_lock(root)?;
+    sync_workspace_boundary(backend, root, &lock)?;
 
     Ok(crate::MaterializeResponse {
         response: response_envelope(context, crate::AggregateStatus::Ok, responses),
@@ -517,9 +528,11 @@ where
         &target_path,
         &manifest,
         plans,
-        rewrite_lock,
-        true,
-        materialize.meta.policy.as_ref(),
+        MaterializeApplyOptions {
+            rewrite_lock,
+            follow_branch_head: true,
+            policy: materialize.meta.policy.as_ref(),
+        },
         context,
         emitter,
     )?;

@@ -37,7 +37,18 @@ where
     let context = OperationRequest::PullHead(request.clone()).context(operation_id.into())?;
     let root = resolve_workspace_root(start, request.meta.workspace.as_ref())?;
     let dry_run = request.meta.dry_run.unwrap_or(false);
-    let root_changed = if dry_run {
+    let manifest_for_selection = artifact::read_manifest(&root)?;
+    assert_workspace_id(&manifest_for_selection, request.meta.workspace.as_ref())?;
+    let selected_for_root = resolve_targets(
+        &manifest_for_selection,
+        request.meta.selection.as_ref(),
+        CommandDefaultTargets::All,
+        RootSelectionPolicy::Allow,
+    )?;
+    let pull_root_selected = selected_for_root
+        .iter()
+        .any(|target| matches!(target, SelectedTarget::Root));
+    let root_changed = if dry_run || !pull_root_selected {
         false
     } else {
         pull_workspace_root(backend, &root, request.meta.policy.as_ref())?
@@ -45,7 +56,24 @@ where
     let manifest = artifact::read_manifest(&root)?;
     assert_workspace_id(&manifest, request.meta.workspace.as_ref())?;
     let mut lock = artifact::read_lock(&root)?;
-    let selected = resolve_locked_selection(&manifest, &lock, request.meta.selection.as_ref())?;
+    let selected_targets = resolve_targets(
+        &manifest,
+        request.meta.selection.as_ref(),
+        CommandDefaultTargets::All,
+        RootSelectionPolicy::Allow,
+    )?;
+    let mut selected = Vec::new();
+    for target in selected_targets {
+        if let SelectedTarget::Member(member) = target {
+            if !lock.members.contains_key(&member.id) {
+                return Err(ModelError::new(
+                    ErrorCode::LockNotFound,
+                    format!("lock record missing for member '{}'", member.id),
+                ));
+            }
+            selected.push(member.id.clone());
+        }
+    }
     if dry_run {
         let plans = pull_head_preflight(
             backend,
@@ -471,6 +499,7 @@ impl PullHeadPlan {
             }),
             state: None,
             git_status: None,
+            target_kind: Some(crate::TargetKind::Member),
             lock_match: None,
         }
     }
@@ -870,6 +899,7 @@ pub(crate) fn pull_result_response(
         state: Some(protocol_state(member, state)),
         git_status: None,
         // A conflicted worktree no longer matches the lock; don't claim it does.
+        target_kind: Some(crate::TargetKind::Member),
         lock_match: conflicts.is_empty().then_some(crate::LockMatch::Matches),
     }
 }

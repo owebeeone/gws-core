@@ -757,11 +757,13 @@ fn stash_member_response(
             message: error.message,
             member_id: Some(member.id.clone()),
             member_path: Some(member.path.clone()),
+            target_kind: Some(crate::TargetKind::Member),
             detail: None,
         }),
         planned: None,
         state: None,
         git_status: None,
+        target_kind: Some(crate::TargetKind::Member),
         lock_match: None,
     }
 }

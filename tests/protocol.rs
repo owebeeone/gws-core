@@ -773,6 +773,7 @@ fn member_error() -> GwzError {
         message: "member diverged".to_owned(),
         member_id: Some("core".to_owned()),
         member_path: Some("libs/core".to_owned()),
+        target_kind: Some(gwz_core::TargetKind::Member),
         detail: Some("HEAD and upstream have distinct commits".to_owned()),
     }
 }

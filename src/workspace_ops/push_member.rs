@@ -2,12 +2,11 @@ use std::path::Path;
 
 use crate::artifact::{self, ArtifactSourceKind, ManifestArtifact, ManifestMember};
 use crate::git::{GitBackend, GitHeadState, git_host};
-use crate::model::{ErrorCode, MemberId, ModelError, ModelResult};
+use crate::model::{ErrorCode, ModelError, ModelResult};
 use crate::operation::{
     EventEmitter, EventSink, NullSink, OperationRequest, par_map_per_host, resolve_jobs,
     resolve_per_host,
 };
-use crate::workspace::MemberPath;
 
 use super::*;
 
@@ -37,9 +36,22 @@ where
     let root = resolve_workspace_root(start, request.meta.workspace.as_ref())?;
     let manifest = artifact::read_manifest(&root)?;
     assert_workspace_id(&manifest, request.meta.workspace.as_ref())?;
-    let selected = resolve_manifest_selection(&manifest, request.meta.selection.as_ref())?;
+    let selected = resolve_targets(
+        &manifest,
+        request.meta.selection.as_ref(),
+        CommandDefaultTargets::All,
+        RootSelectionPolicy::Allow,
+    )?;
+    let mut selected_members = Vec::new();
+    let mut push_root_selected = false;
+    for target in selected {
+        match target {
+            SelectedTarget::Root => push_root_selected = true,
+            SelectedTarget::Member(member) => selected_members.push(member.id.clone()),
+        }
+    }
     if request.meta.dry_run.unwrap_or(false) {
-        let responses = selected
+        let mut responses = selected_members
             .iter()
             .map(|member_id| {
                 let member = manifest
@@ -52,6 +64,9 @@ where
                 Ok(push_member(backend, &root, member, &request, true))
             })
             .collect::<ModelResult<Vec<_>>>()?;
+        if push_root_selected {
+            responses.push(push_root(backend, &root, &request, true));
+        }
 
         return Ok(crate::PushResponse {
             response: response_envelope(context, push_aggregate_status(&responses), responses),
@@ -64,7 +79,7 @@ where
     // advanced. Skipped members are intentional policy, not a failure. A remote
     // rejecting an otherwise-valid push is a genuine push-time outcome and is still
     // reported per member in the loop below.
-    let preflight = selected
+    let mut preflight = selected_members
         .iter()
         .map(|member_id| {
             let member = manifest
@@ -75,6 +90,9 @@ where
             Ok(push_member(backend, &root, member, &request, true))
         })
         .collect::<ModelResult<Vec<_>>>()?;
+    if push_root_selected {
+        preflight.push(push_root(backend, &root, &request, true));
+    }
     if preflight.iter().any(|response| {
         matches!(
             response.status,
@@ -94,8 +112,8 @@ where
         .unwrap_or(0);
     let emitter = EventEmitter::new(&context, events, progress_interval);
     emitter.operation_started();
-    let responses = par_map_per_host(
-        selected,
+    let mut responses = par_map_per_host(
+        selected_members,
         resolve_jobs(
             request
                 .meta
@@ -131,6 +149,11 @@ where
     )
     .into_iter()
     .collect::<ModelResult<Vec<_>>>()?;
+    if push_root_selected {
+        emitter.member_started("@root", ".");
+        responses.push(push_root(backend, &root, &request, false));
+        emitter.member_finished("@root", ".");
+    }
     emitter.operation_finished();
 
     Ok(crate::PushResponse {
@@ -142,98 +165,7 @@ pub(crate) fn resolve_manifest_selection(
     manifest: &ManifestArtifact,
     selection: Option<&crate::Selection>,
 ) -> ModelResult<Vec<String>> {
-    match selection {
-        None => Ok(manifest
-            .members
-            .iter()
-            .filter(|member| member.active)
-            .map(|member| member.id.clone())
-            .collect::<Vec<_>>()),
-        Some(selection) => resolve_explicit_locked_selection(manifest, selection),
-    }
-}
-
-pub(crate) fn resolve_explicit_locked_selection(
-    manifest: &ManifestArtifact,
-    selection: &crate::Selection,
-) -> ModelResult<Vec<String>> {
-    let has_filters = !selection.member_ids.is_empty() || !selection.paths.is_empty();
-    if selection.all == Some(true) {
-        if has_filters {
-            return Err(invalid(
-                "selection cannot combine all=true with member filters",
-            ));
-        }
-        return Ok(manifest
-            .members
-            .iter()
-            .filter(|member| member.active)
-            .map(|member| member.id.clone())
-            .collect());
-    }
-    if !has_filters {
-        return Err(invalid(
-            "selection must include all=true, member_ids, or paths",
-        ));
-    }
-
-    let mut selected = Vec::new();
-    let mut seen = std::collections::BTreeSet::new();
-    for member_id in &selection.member_ids {
-        MemberId::parse_str(member_id)?;
-        let member = find_active_member_by_id(manifest, member_id)?;
-        if !seen.insert(member.id.clone()) {
-            return Err(invalid("selection resolves the same member more than once"));
-        }
-        selected.push(member.id.clone());
-    }
-    for path in &selection.paths {
-        MemberPath::parse(path)?;
-        let member = find_active_member_by_path(manifest, path)?;
-        if !seen.insert(member.id.clone()) {
-            return Err(invalid("selection resolves the same member more than once"));
-        }
-        selected.push(member.id.clone());
-    }
-    Ok(selected)
-}
-
-pub(crate) fn find_active_member_by_id<'a>(
-    manifest: &'a ManifestArtifact,
-    member_id: &str,
-) -> ModelResult<&'a ManifestMember> {
-    let member = manifest
-        .members
-        .iter()
-        .find(|member| member.id == member_id)
-        .ok_or_else(|| ModelError::new(ErrorCode::MemberNotFound, "member id not found"))?;
-    if member.active {
-        Ok(member)
-    } else {
-        Err(ModelError::new(
-            ErrorCode::MemberInactive,
-            "selected member is inactive",
-        ))
-    }
-}
-
-pub(crate) fn find_active_member_by_path<'a>(
-    manifest: &'a ManifestArtifact,
-    path: &str,
-) -> ModelResult<&'a ManifestMember> {
-    let member = manifest
-        .members
-        .iter()
-        .find(|member| member.path == path)
-        .ok_or_else(|| ModelError::new(ErrorCode::MemberNotFound, "member path not found"))?;
-    if member.active {
-        Ok(member)
-    } else {
-        Err(ModelError::new(
-            ErrorCode::MemberInactive,
-            "selected member is inactive",
-        ))
-    }
+    resolve_member_ids(manifest, selection, CommandDefaultTargets::Members)
 }
 
 pub(crate) fn push_remote_host(
@@ -316,6 +248,7 @@ where
             }),
             state: None,
             git_status: None,
+            target_kind: Some(crate::TargetKind::Member),
             lock_match: None,
         };
     }
@@ -330,6 +263,7 @@ where
             planned: None,
             state: None,
             git_status: None,
+            target_kind: Some(crate::TargetKind::Member),
             lock_match: None,
         },
         Err(error) if error.code == ErrorCode::MissingRemote => {
@@ -342,6 +276,111 @@ where
             crate::MemberStatus::Failed,
         ),
     }
+}
+
+pub(crate) fn push_root<B>(
+    backend: &B,
+    root: &Path,
+    request: &crate::PushRequest,
+    dry_run: bool,
+) -> crate::MemberResponse
+where
+    B: GitBackend,
+{
+    let is_repo = match backend.is_repository(root) {
+        Ok(is_repo) => is_repo,
+        Err(error) => return push_root_error(error, crate::MemberStatus::Failed),
+    };
+    if !is_repo {
+        return push_root_error(
+            ModelError::new(
+                ErrorCode::MemberNotFound,
+                "workspace root is not a git repository",
+            ),
+            crate::MemberStatus::Rejected,
+        );
+    }
+    let remote = match resolve_root_push_remote(backend, root, request) {
+        Ok(remote) => remote,
+        Err(error) => return push_root_error(error, crate::MemberStatus::Rejected),
+    };
+    let head = match backend.head(root) {
+        Ok(head) => head,
+        Err(error) => return push_root_error(error, crate::MemberStatus::Failed),
+    };
+    let refspec = match resolve_push_refspec(&head, request) {
+        Ok(refspec) => refspec,
+        Err(error) => return push_root_error(error, crate::MemberStatus::Rejected),
+    };
+    if dry_run {
+        return crate::MemberResponse {
+            member_id: "@root".to_owned(),
+            member_path: ".".to_owned(),
+            source_kind: crate::SourceKind::Git,
+            status: crate::MemberStatus::Planned,
+            error: None,
+            planned: Some(crate::PlannedChange {
+                action: crate::PlannedAction::Push,
+                from_ref: head.commit.clone(),
+                to_ref: Some(refspec),
+                message: Some(format!("push to {remote}")),
+            }),
+            state: None,
+            git_status: None,
+            target_kind: Some(crate::TargetKind::Root),
+            lock_match: None,
+        };
+    }
+
+    match backend.push(root, &remote, &refspec) {
+        Ok(_) => crate::MemberResponse {
+            member_id: "@root".to_owned(),
+            member_path: ".".to_owned(),
+            source_kind: crate::SourceKind::Git,
+            status: crate::MemberStatus::Ok,
+            error: None,
+            planned: None,
+            state: None,
+            git_status: None,
+            target_kind: Some(crate::TargetKind::Root),
+            lock_match: None,
+        },
+        Err(error) if error.code == ErrorCode::MissingRemote => {
+            push_root_error(error, crate::MemberStatus::Failed)
+        }
+        Err(error) => push_root_error(
+            ModelError::new(ErrorCode::RemoteRejected, error.message),
+            crate::MemberStatus::Failed,
+        ),
+    }
+}
+
+pub(crate) fn resolve_root_push_remote<B: GitBackend>(
+    backend: &B,
+    root: &Path,
+    request: &crate::PushRequest,
+) -> ModelResult<String> {
+    if let Some(remote) = request.remote.clone().or_else(|| {
+        request
+            .meta
+            .policy
+            .as_ref()
+            .and_then(|policy| policy.remote.clone())
+    }) {
+        return Ok(remote);
+    }
+
+    backend
+        .remotes(root)?
+        .into_iter()
+        .find(|remote| remote.push_url.is_some() || remote.url.is_some())
+        .map(|remote| remote.name)
+        .ok_or_else(|| {
+            ModelError::new(
+                ErrorCode::MissingRemote,
+                "workspace root has no push remote",
+            )
+        })
 }
 
 pub(crate) fn resolve_push_remote(
@@ -425,11 +464,38 @@ pub(crate) fn push_member_error(
             message: error.message,
             member_id: Some(member.id.clone()),
             member_path: Some(member.path.clone()),
+            target_kind: Some(crate::TargetKind::Member),
             detail: None,
         }),
         planned: None,
         state: None,
         git_status: None,
+        target_kind: Some(crate::TargetKind::Member),
+        lock_match: None,
+    }
+}
+
+pub(crate) fn push_root_error(
+    error: ModelError,
+    status: crate::MemberStatus,
+) -> crate::MemberResponse {
+    crate::MemberResponse {
+        member_id: "@root".to_owned(),
+        member_path: ".".to_owned(),
+        source_kind: crate::SourceKind::Git,
+        status,
+        error: Some(crate::GwzError {
+            code: error.code.into(),
+            message: error.message,
+            member_id: Some("@root".to_owned()),
+            member_path: Some(".".to_owned()),
+            target_kind: Some(crate::TargetKind::Root),
+            detail: None,
+        }),
+        planned: None,
+        state: None,
+        git_status: None,
+        target_kind: Some(crate::TargetKind::Root),
         lock_match: None,
     }
 }

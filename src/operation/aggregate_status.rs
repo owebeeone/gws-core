@@ -103,6 +103,7 @@ pub(crate) fn member_execution_to_protocol(member: &MemberExecution) -> crate::M
         planned: None,
         state: None,
         git_status: None,
+        target_kind: Some(crate::TargetKind::Member),
         lock_match: None,
     }
 }
@@ -113,6 +114,7 @@ pub(crate) fn operation_error_to_protocol(error: &OperationError) -> crate::GwzE
         message: error.message.clone(),
         member_id: error.member_id.as_ref().map(ToString::to_string),
         member_path: error.member_path.clone(),
+        target_kind: Some(crate::TargetKind::Member),
         detail: None,
     }
 }

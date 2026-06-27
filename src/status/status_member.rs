@@ -1,11 +1,10 @@
-use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use crate::artifact::{self, ArtifactSourceKind, LockArtifact, ManifestArtifact, ManifestMember};
+use crate::artifact::{self, ArtifactSourceKind, LockArtifact, ManifestMember};
 use crate::git::{GitBackend, GitHeadState, GitStatus as BackendGitStatus};
-use crate::model::{ErrorCode, MemberId, ModelError, ModelResult};
+use crate::model::{ErrorCode, ModelError, ModelResult};
 use crate::operation::{ActionKind, OperationRequest};
-use crate::workspace::{MemberPath, discover_workspace_root};
+use crate::workspace::discover_workspace_root;
 
 use super::*;
 
@@ -35,9 +34,20 @@ where
     }
 
     let lock = read_lock_optional(&workspace_root)?;
-    let selected = resolve_selection(&manifest, request.meta.selection.as_ref())?;
+    let selected = crate::workspace_ops::resolve_targets(
+        &manifest,
+        request.meta.selection.as_ref(),
+        crate::workspace_ops::CommandDefaultTargets::All,
+        crate::workspace_ops::RootSelectionPolicy::Allow,
+    )?;
+    let include_root = selected
+        .iter()
+        .any(|target| matches!(target, crate::workspace_ops::SelectedTarget::Root));
     let mut reports = Vec::with_capacity(selected.len());
-    for member in selected {
+    for member in selected.into_iter().filter_map(|target| match target {
+        crate::workspace_ops::SelectedTarget::Root => None,
+        crate::workspace_ops::SelectedTarget::Member(member) => Some(member),
+    }) {
         reports.push(status_member(
             backend,
             &workspace_root,
@@ -49,7 +59,11 @@ where
         .iter()
         .map(|report| report.response.clone())
         .collect::<Vec<_>>();
-    let root_report = root_status(backend, &workspace_root)?;
+    let root_report = if include_root {
+        root_status(backend, &workspace_root)?
+    } else {
+        None
+    };
     let workspace_git_status = matches!(
         request.mode,
         Some(crate::StatusMode::Combined | crate::StatusMode::Summary)
@@ -101,114 +115,6 @@ pub(crate) fn read_lock_optional(root: &Path) -> ModelResult<Option<LockArtifact
         artifact::read_lock(root).map(Some)
     } else {
         Ok(None)
-    }
-}
-
-pub(crate) fn resolve_selection<'a>(
-    manifest: &'a ManifestArtifact,
-    selection: Option<&crate::Selection>,
-) -> ModelResult<Vec<&'a ManifestMember>> {
-    match selection {
-        None => Ok(manifest
-            .members
-            .iter()
-            .filter(|member| member.active)
-            .collect()),
-        Some(selection) => resolve_explicit_selection(manifest, selection),
-    }
-}
-
-pub(crate) fn resolve_explicit_selection<'a>(
-    manifest: &'a ManifestArtifact,
-    selection: &crate::Selection,
-) -> ModelResult<Vec<&'a ManifestMember>> {
-    let has_filters = !selection.member_ids.is_empty() || !selection.paths.is_empty();
-    if selection.all == Some(true) {
-        if has_filters {
-            return Err(invalid(
-                "selection cannot combine all=true with member filters",
-            ));
-        }
-        return Ok(manifest
-            .members
-            .iter()
-            .filter(|member| member.active)
-            .collect());
-    }
-    if !has_filters {
-        return Err(invalid(
-            "selection must include all=true, member_ids, or paths",
-        ));
-    }
-
-    let mut selected = Vec::new();
-    let mut seen = BTreeSet::new();
-    for member_id in &selection.member_ids {
-        MemberId::parse_str(member_id)?;
-        let member = find_member_by_id(manifest, member_id)?;
-        push_selected(member, &mut seen, &mut selected)?;
-    }
-    for path in &selection.paths {
-        MemberPath::parse(path)?;
-        let member = find_member_by_path(manifest, path)?;
-        push_selected(member, &mut seen, &mut selected)?;
-    }
-    Ok(selected)
-}
-
-pub(crate) fn find_member_by_id<'a>(
-    manifest: &'a ManifestArtifact,
-    member_id: &str,
-) -> ModelResult<&'a ManifestMember> {
-    let mut matches = manifest
-        .members
-        .iter()
-        .filter(|member| member.id == member_id);
-    let member = matches
-        .next()
-        .ok_or_else(|| ModelError::new(ErrorCode::MemberNotFound, "member id not found"))?;
-    if matches.next().is_some() {
-        return Err(invalid("member id selection is ambiguous"));
-    }
-    require_active(member)?;
-    Ok(member)
-}
-
-pub(crate) fn find_member_by_path<'a>(
-    manifest: &'a ManifestArtifact,
-    path: &str,
-) -> ModelResult<&'a ManifestMember> {
-    let mut matches = manifest.members.iter().filter(|member| member.path == path);
-    let member = matches
-        .next()
-        .ok_or_else(|| ModelError::new(ErrorCode::MemberNotFound, "member path not found"))?;
-    if matches.next().is_some() {
-        return Err(invalid("member path selection is ambiguous"));
-    }
-    require_active(member)?;
-    Ok(member)
-}
-
-pub(crate) fn push_selected<'a>(
-    member: &'a ManifestMember,
-    seen: &mut BTreeSet<&'a str>,
-    selected: &mut Vec<&'a ManifestMember>,
-) -> ModelResult<()> {
-    if !seen.insert(member.id.as_str()) {
-        return Err(invalid("selection resolves the same member more than once"));
-    }
-    selected.push(member);
-    Ok(())
-}
-
-pub(crate) fn require_active(member: &ManifestMember) -> ModelResult<()> {
-    if member.active {
-        Ok(())
-    } else {
-        Err(ModelError::new(
-            ErrorCode::MemberInactive,
-            "selected member is inactive",
-        ))
     }
 }
 
@@ -319,6 +225,7 @@ where
         planned: None,
         state: None,
         git_status: Some(protocol_git_status(member, &head, &status)),
+        target_kind: Some(crate::TargetKind::Member),
         lock_match: Some(lock_match(lock, member, &head, &status)),
     };
     StatusMemberReport {
@@ -499,8 +406,4 @@ pub(crate) fn aggregate_status(members: &[crate::MemberResponse]) -> crate::Aggr
     } else {
         crate::AggregateStatus::Ok
     }
-}
-
-pub(crate) fn invalid(message: impl Into<String>) -> ModelError {
-    ModelError::new(ErrorCode::InvalidRequest, message)
 }

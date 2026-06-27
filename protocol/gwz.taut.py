@@ -185,6 +185,11 @@ SCHEMA = schema(
          local=3,
          generated=4),
 
+    # Concrete target kind selected by workspace-wide target selectors.
+    TargetKind=Enum(
+         root=0,
+         member=1),
+
     # Whole-operation status across selected members.
     AggregateStatus=Enum(
          accepted=0,
@@ -390,7 +395,12 @@ SCHEMA = schema(
         # Select members by manifest id.
         member_ids=F(2, List(STR)),
         # Select members by workspace-relative member path.
-        paths=F(3, List(STR))),
+        paths=F(3, List(STR)),
+        # Select workspace targets by selector token. Examples: @default,
+        # @all, @root, member ids, member paths, and future declared @sets.
+        targets=F(4, List(STR)),
+        # Exclude workspace targets by selector token after include expansion.
+        exclude_targets=F(5, List(STR))),
 
     # Driver-selected operation policy. v0 handlers may support only a subset.
     OperationPolicy=Msg(
@@ -450,7 +460,9 @@ SCHEMA = schema(
         member_id=F(3, STR, optional=True),
         member_path=F(4, STR, optional=True),
         # Optional implementation detail for logs/debugging.
-        detail=F(5, STR, optional=True)),
+        detail=F(5, STR, optional=True),
+        # Concrete target kind for member_id/member_path when present.
+        target_kind=F(6, Ref.TargetKind, optional=True)),
 
     # ---- model projections ------------------------------------------------
     # Remote declaration recorded for a member.
@@ -748,7 +760,9 @@ SCHEMA = schema(
         state=F(7, Ref.ResolvedMemberState, optional=True),
         git_status=F(8, Ref.GitStatus, optional=True),
         # Whether the current member state matches the lock.
-        lock_match=F(9, Ref.LockMatch, optional=True)),
+        lock_match=F(9, Ref.LockMatch, optional=True),
+        # Concrete target kind for this response.
+        target_kind=F(10, Ref.TargetKind, optional=True)),
 
     # Standard response payload for request/response operations.
     ResponseEnvelope=Msg(
@@ -774,7 +788,9 @@ SCHEMA = schema(
         error=F(11, Ref.GwzError, optional=True),
         attribution=F(12, Ref.OperationAttribution, optional=True),
         # Git transfer counters for member_progress events.
-        progress=F(13, Ref.GitTransferProgress, optional=True)),
+        progress=F(13, Ref.GitTransferProgress, optional=True),
+        # Concrete target kind for member_id/member_path when present.
+        target_kind=F(14, Ref.TargetKind, optional=True)),
 
     # Final operation record returned by operation.result.
     OperationResult=Msg(
@@ -876,7 +892,9 @@ SCHEMA = schema(
         # Absolute path on this host.
         abspath=F(3, STR),
         # Whether the member is cloned/materialized on disk.
-        materialized=F(4, BOOL)),
+        materialized=F(4, BOOL),
+        # Concrete target kind for this list entry.
+        target_kind=F(5, Ref.TargetKind, optional=True)),
 
     LsResponse=Msg(
         response=F(1, Ref.ResponseEnvelope),

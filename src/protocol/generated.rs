@@ -305,6 +305,23 @@ impl SourceKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub enum TargetKind {
+    #[default] Root,
+    Member,
+}
+impl TargetKind {
+    pub fn wire(self) -> i64 { match self {
+        Self::Root => 0,
+        Self::Member => 1,
+    } }
+    pub fn from_wire(v: i64) -> Self { match v {
+        0 => Self::Root,
+        1 => Self::Member,
+        _ => panic!("bad TargetKind wire value {}", v),
+    } }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum AggregateStatus {
     #[default] Accepted,
     Ok,
@@ -919,6 +936,8 @@ pub struct Selection {
     pub all: Option<bool>,
     pub member_ids: Vec<String>,
     pub paths: Vec<String>,
+    pub targets: Vec<String>,
+    pub exclude_targets: Vec<String>,
 }
 impl Selection {
     pub fn to_cbor(&self) -> Cbor {
@@ -926,6 +945,8 @@ impl Selection {
             (1, match &self.all { Some(v) => Cbor::Bool(*v), None => Cbor::Null }),
             (2, Cbor::Array(self.member_ids.iter().map(|x| Cbor::Text(x.clone())).collect())),
             (3, Cbor::Array(self.paths.iter().map(|x| Cbor::Text(x.clone())).collect())),
+            (4, Cbor::Array(self.targets.iter().map(|x| Cbor::Text(x.clone())).collect())),
+            (5, Cbor::Array(self.exclude_targets.iter().map(|x| Cbor::Text(x.clone())).collect())),
         ])
     }
     pub fn from_cbor(c: &Cbor) -> Self {
@@ -933,6 +954,8 @@ impl Selection {
             all: { let v = c.get(1); if v.is_null() { None } else { Some(v.boolean()) } },
             member_ids: c.get(2).array().iter().map(|x| x.text()).collect(),
             paths: c.get(3).array().iter().map(|x| x.text()).collect(),
+            targets: c.get(4).array().iter().map(|x| x.text()).collect(),
+            exclude_targets: c.get(5).array().iter().map(|x| x.text()).collect(),
         }
     }
 }
@@ -1052,6 +1075,7 @@ pub struct GwzError {
     pub member_id: Option<String>,
     pub member_path: Option<String>,
     pub detail: Option<String>,
+    pub target_kind: Option<TargetKind>,
 }
 impl GwzError {
     pub fn to_cbor(&self) -> Cbor {
@@ -1061,6 +1085,7 @@ impl GwzError {
             (3, match &self.member_id { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
             (4, match &self.member_path { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
             (5, match &self.detail { Some(v) => Cbor::Text(v.clone()), None => Cbor::Null }),
+            (6, match &self.target_kind { Some(v) => Cbor::Int(v.wire()), None => Cbor::Null }),
         ])
     }
     pub fn from_cbor(c: &Cbor) -> Self {
@@ -1070,6 +1095,7 @@ impl GwzError {
             member_id: { let v = c.get(3); if v.is_null() { None } else { Some(v.text()) } },
             member_path: { let v = c.get(4); if v.is_null() { None } else { Some(v.text()) } },
             detail: { let v = c.get(5); if v.is_null() { None } else { Some(v.text()) } },
+            target_kind: { let v = c.get(6); if v.is_null() { None } else { Some(TargetKind::from_wire(v.int())) } },
         }
     }
 }
@@ -1877,6 +1903,7 @@ pub struct MemberResponse {
     pub state: Option<ResolvedMemberState>,
     pub git_status: Option<GitStatus>,
     pub lock_match: Option<LockMatch>,
+    pub target_kind: Option<TargetKind>,
 }
 impl MemberResponse {
     pub fn to_cbor(&self) -> Cbor {
@@ -1890,6 +1917,7 @@ impl MemberResponse {
             (7, match &self.state { Some(v) => v.to_cbor(), None => Cbor::Null }),
             (8, match &self.git_status { Some(v) => v.to_cbor(), None => Cbor::Null }),
             (9, match &self.lock_match { Some(v) => Cbor::Int(v.wire()), None => Cbor::Null }),
+            (10, match &self.target_kind { Some(v) => Cbor::Int(v.wire()), None => Cbor::Null }),
         ])
     }
     pub fn from_cbor(c: &Cbor) -> Self {
@@ -1903,6 +1931,7 @@ impl MemberResponse {
             state: { let v = c.get(7); if v.is_null() { None } else { Some(ResolvedMemberState::from_cbor(v)) } },
             git_status: { let v = c.get(8); if v.is_null() { None } else { Some(GitStatus::from_cbor(v)) } },
             lock_match: { let v = c.get(9); if v.is_null() { None } else { Some(LockMatch::from_wire(v.int())) } },
+            target_kind: { let v = c.get(10); if v.is_null() { None } else { Some(TargetKind::from_wire(v.int())) } },
         }
     }
 }
@@ -1945,6 +1974,7 @@ pub struct OperationEvent {
     pub error: Option<GwzError>,
     pub attribution: Option<OperationAttribution>,
     pub progress: Option<GitTransferProgress>,
+    pub target_kind: Option<TargetKind>,
 }
 impl OperationEvent {
     pub fn to_cbor(&self) -> Cbor {
@@ -1962,6 +1992,7 @@ impl OperationEvent {
             (11, match &self.error { Some(v) => v.to_cbor(), None => Cbor::Null }),
             (12, match &self.attribution { Some(v) => v.to_cbor(), None => Cbor::Null }),
             (13, match &self.progress { Some(v) => v.to_cbor(), None => Cbor::Null }),
+            (14, match &self.target_kind { Some(v) => Cbor::Int(v.wire()), None => Cbor::Null }),
         ])
     }
     pub fn from_cbor(c: &Cbor) -> Self {
@@ -1979,6 +2010,7 @@ impl OperationEvent {
             error: { let v = c.get(11); if v.is_null() { None } else { Some(GwzError::from_cbor(v)) } },
             attribution: { let v = c.get(12); if v.is_null() { None } else { Some(OperationAttribution::from_cbor(v)) } },
             progress: { let v = c.get(13); if v.is_null() { None } else { Some(GitTransferProgress::from_cbor(v)) } },
+            target_kind: { let v = c.get(14); if v.is_null() { None } else { Some(TargetKind::from_wire(v.int())) } },
         }
     }
 }
@@ -2249,6 +2281,7 @@ pub struct MemberEntry {
     pub path: String,
     pub abspath: String,
     pub materialized: bool,
+    pub target_kind: Option<TargetKind>,
 }
 impl MemberEntry {
     pub fn to_cbor(&self) -> Cbor {
@@ -2257,6 +2290,7 @@ impl MemberEntry {
             (2, Cbor::Text(self.path.clone())),
             (3, Cbor::Text(self.abspath.clone())),
             (4, Cbor::Bool(self.materialized)),
+            (5, match &self.target_kind { Some(v) => Cbor::Int(v.wire()), None => Cbor::Null }),
         ])
     }
     pub fn from_cbor(c: &Cbor) -> Self {
@@ -2265,6 +2299,7 @@ impl MemberEntry {
             path: c.get(2).text(),
             abspath: c.get(3).text(),
             materialized: c.get(4).boolean(),
+            target_kind: { let v = c.get(5); if v.is_null() { None } else { Some(TargetKind::from_wire(v.int())) } },
         }
     }
 }

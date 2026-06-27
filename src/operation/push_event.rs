@@ -329,6 +329,7 @@ impl<'a> EventEmitter<'a> {
         progress: Option<crate::GitTransferProgress>,
     ) {
         let sequence = self.sequence.fetch_add(1, Ordering::Relaxed);
+        let target_kind = member_id.as_ref().map(|_| crate::TargetKind::Member);
         self.sink.deliver(crate::OperationEvent {
             operation_id: self.operation_id.clone(),
             request_id: self.request_id.clone(),
@@ -343,6 +344,7 @@ impl<'a> EventEmitter<'a> {
             error: None,
             attribution: self.attribution.clone(),
             progress,
+            target_kind,
         });
     }
 
@@ -453,6 +455,7 @@ pub(crate) fn push_event(state: &mut OperationState, context: &OperationContext)
         member: None,
         error: None,
         attribution: context.attribution.as_ref().map(Into::into),
+        target_kind: None,
         progress: None,
     };
     state.next_sequence += 1;
@@ -478,6 +481,7 @@ pub(crate) fn member_plan_to_protocol(member: &MemberPlan) -> crate::MemberRespo
         }),
         state: None,
         git_status: None,
+        target_kind: Some(crate::TargetKind::Member),
         lock_match: None,
     }
 }

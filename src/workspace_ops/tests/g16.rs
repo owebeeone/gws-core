@@ -288,7 +288,7 @@ fn create_with_message_stores_the_annotation() {
 }
 
 #[test]
-fn tags_span_the_committed_workspace_root() {
+fn tags_do_not_implicitly_target_workspace_root() {
     let temp = TempDir::new("tag-root");
     let backend = Git2Backend::new();
     let _fixture = init_one_member_workspace(temp.path(), &backend, "tag-root-source");
@@ -306,11 +306,11 @@ fn tags_span_the_committed_workspace_root() {
     )
     .unwrap();
     assert!(
-        backend
+        !backend
             .tag_list(temp.path())
             .unwrap()
             .contains(&"v1".to_owned()),
-        "the workspace root carries the tag"
+        "root tag support is not part of target-selection v1"
     );
     let listed = handle_tag(
         &backend,
@@ -325,5 +325,5 @@ fn tags_span_the_committed_workspace_root() {
         .into_iter()
         .find(|t| t.name == "v1")
         .expect("v1 listed");
-    assert_eq!(v1.members, 2, "member + root both carry the tag");
+    assert_eq!(v1.members, 1, "only selected members carry the tag");
 }

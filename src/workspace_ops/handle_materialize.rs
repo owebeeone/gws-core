@@ -839,6 +839,7 @@ fn branch_switch_preflight<B: GitBackend>(
                 },
             )),
             git_status: None,
+            target_kind: Some(crate::TargetKind::Member),
             lock_match: Some(crate::LockMatch::Differs),
         });
     }
@@ -865,6 +866,7 @@ pub(crate) fn locked_member_responses(
                 planned: None,
                 state: manifest_member.map(|member| protocol_state(member, state)),
                 git_status: None,
+                target_kind: Some(crate::TargetKind::Member),
                 lock_match: Some(crate::LockMatch::Matches),
             }
         })
@@ -975,6 +977,7 @@ pub(crate) fn materialized_response(
         planned: None,
         state: Some(protocol_state(member, observed)),
         git_status: None,
+        target_kind: Some(crate::TargetKind::Member),
         lock_match: Some(lock_match),
     }
 }

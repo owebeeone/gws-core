@@ -29,32 +29,29 @@ where
     // Every member path defines a repo boundary for routing.
     let member_paths: Vec<String> = manifest.members.iter().map(|m| m.path.clone()).collect();
     let all = request.all.unwrap_or(false);
-    // A narrowing member selection (`--member` / `--member-path`) scopes `-A` to those
-    // members only; bare `-A` (or `--all`) stages the root plus every member.
-    let narrowed =
-        request.meta.selection.as_ref().is_some_and(|selection| {
-            !selection.member_ids.is_empty() || !selection.paths.is_empty()
-        });
+    // An explicit target selection scopes `-A`; bare `-A` stages the root plus every member.
+    let narrowed = has_explicit_target_selection(request.meta.selection.as_ref());
 
     let targets = if all && narrowed {
-        let lock = artifact::read_lock(&root)?;
-        let selected = resolve_locked_selection(&manifest, &lock, request.meta.selection.as_ref())?;
+        let selected = resolve_targets(
+            &manifest,
+            request.meta.selection.as_ref(),
+            CommandDefaultTargets::All,
+            RootSelectionPolicy::Allow,
+        )?;
         selected
-            .iter()
-            .map(|member_id| {
-                let path = manifest
-                    .members
-                    .iter()
-                    .find(|member| &member.id == member_id)
-                    .map(|member| member.path.clone())
-                    .ok_or_else(|| {
-                        ModelError::new(ErrorCode::MemberNotFound, "member not found")
-                    })?;
-                Ok(StageTarget {
-                    member_path: Some(path),
+            .into_iter()
+            .map(|target| match target {
+                SelectedTarget::Root => Ok(StageTarget {
+                    member_path: None,
                     pathspecs: vec![".".to_owned()],
                     explicit: true,
-                })
+                }),
+                SelectedTarget::Member(member) => Ok(StageTarget {
+                    member_path: Some(member.path.clone()),
+                    pathspecs: vec![".".to_owned()],
+                    explicit: true,
+                }),
             })
             .collect::<ModelResult<Vec<_>>>()?
     } else {

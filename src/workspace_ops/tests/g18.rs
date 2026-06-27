@@ -78,6 +78,8 @@ fn ls_request(member_ids: &[&str], include_unmaterialized: bool) -> crate::LsReq
             all: None,
             member_ids: member_ids.iter().map(|id| id.to_string()).collect(),
             paths: Vec::new(),
+            targets: Vec::new(),
+            exclude_targets: Vec::new(),
         });
     }
     crate::LsRequest {

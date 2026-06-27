@@ -247,7 +247,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_inactive_and_ambiguous_selection_fail_before_member_work() {
+    fn unknown_inactive_and_duplicate_selection_behave_before_member_work() {
         let temp = TempDir::new("selection");
         write_manifest(
             temp.path(),
@@ -281,17 +281,15 @@ mod tests {
             .code,
             ErrorCode::MemberInactive
         );
-        assert_eq!(
-            handle_status(
-                &backend,
-                temp.path(),
-                status_request(Some(selection(false, &["mem_active"], &["repos/active"]))),
-                "op_status",
-            )
-            .unwrap_err()
-            .code,
-            ErrorCode::InvalidRequest
-        );
+        let duplicate = handle_status(
+            &backend,
+            temp.path(),
+            status_request(Some(selection(false, &["mem_active"], &["repos/active"]))),
+            "op_status",
+        )
+        .unwrap();
+        assert_eq!(duplicate.response.members.len(), 1);
+        assert_eq!(duplicate.response.members[0].member_id, "mem_active");
     }
 
     fn status_request(selection: Option<crate::Selection>) -> crate::StatusRequest {
@@ -311,6 +309,8 @@ mod tests {
             all: Some(all),
             member_ids: member_ids.iter().map(|value| (*value).to_owned()).collect(),
             paths: paths.iter().map(|value| (*value).to_owned()).collect(),
+            targets: Vec::new(),
+            exclude_targets: Vec::new(),
         }
     }
 

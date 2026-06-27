@@ -31,10 +31,24 @@ pub fn handle_ls(
     let include_unmaterialized = request.include_unmaterialized.unwrap_or(false);
 
     // Manifest-tolerant selection (no lock-presence requirement, unlike resolve_locked_selection).
-    let selected = crate::status::resolve_selection(&manifest, request.meta.selection.as_ref())?;
+    let selected = resolve_targets(
+        &manifest,
+        request.meta.selection.as_ref(),
+        CommandDefaultTargets::Members,
+        RootSelectionPolicy::Allow,
+    )?;
     let members = selected
         .into_iter()
         .filter_map(|member| {
+            let SelectedTarget::Member(member) = member else {
+                return Some(crate::MemberEntry {
+                    id: "@root".to_owned(),
+                    path: ".".to_owned(),
+                    abspath: root.to_string_lossy().into_owned(),
+                    materialized: true,
+                    target_kind: Some(crate::TargetKind::Root),
+                });
+            };
             let materialized = lock
                 .as_ref()
                 .and_then(|lock| lock.members.get(&member.id))
@@ -45,6 +59,7 @@ pub fn handle_ls(
                 path: member.path.clone(),
                 abspath: root.join(&member.path).to_string_lossy().into_owned(),
                 materialized,
+                target_kind: Some(crate::TargetKind::Member),
             })
         })
         .collect();

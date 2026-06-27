@@ -15,6 +15,7 @@ impl RuntimeEventSink {
     ) {
         let mut state = self.record.state.lock().expect("operation record poisoned");
         push_event(&mut state, &self.context);
+        let target_kind = member_id.as_ref().map(|_| crate::TargetKind::Member);
         let event = crate::OperationEvent {
             operation_id: self.context.operation_id.clone(),
             request_id: self.context.request_id.clone(),
@@ -28,6 +29,7 @@ impl RuntimeEventSink {
             member: None,
             error: None,
             attribution: self.context.attribution.as_ref().map(Into::into),
+            target_kind,
             progress: None,
         };
         state.next_sequence += 1;

@@ -27,7 +27,28 @@ where
     let manifest = artifact::read_manifest(&root)?;
     assert_workspace_id(&manifest, request.meta.workspace.as_ref())?;
     let lock = artifact::read_lock(&root)?;
-    let selected = resolve_locked_selection(&manifest, &lock, request.meta.selection.as_ref())?;
+    let selected_targets = resolve_targets(
+        &manifest,
+        request.meta.selection.as_ref(),
+        CommandDefaultTargets::All,
+        RootSelectionPolicy::Allow,
+    )?;
+    let mut selected = Vec::new();
+    let mut commit_root_selected = false;
+    for target in selected_targets {
+        match target {
+            SelectedTarget::Root => commit_root_selected = true,
+            SelectedTarget::Member(member) => {
+                if !lock.members.contains_key(&member.id) {
+                    return Err(ModelError::new(
+                        ErrorCode::LockNotFound,
+                        format!("lock record missing for member '{}'", member.id),
+                    ));
+                }
+                selected.push(member.id.clone());
+            }
+        }
+    }
     let all = request.all.unwrap_or(false);
 
     // Validate (non-mutating): every selected member must be materialized before any commit.
@@ -84,7 +105,7 @@ where
     // Commit the root last. This covers both the lock update from member commits
     // and ordinary root-only staged changes.
     let mut committed_root = false;
-    if backend.is_repository(&root)? {
+    if commit_root_selected && backend.is_repository(&root)? {
         let root_status = backend.status(&root)?;
         let has_root_changes = if all {
             root_status.staged > 0 || root_status.unstaged > 0

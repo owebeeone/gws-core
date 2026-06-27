@@ -28,9 +28,8 @@ where
     let lock = artifact::read_lock(&root)?;
     let selected = resolve_locked_selection(&manifest, &lock, request.meta.selection.as_ref())?;
 
-    // Local ops (create/list/delete) span the workspace root (D2) + selected members; remote
-    // ops (push/fetch, and list/delete against a `--remote`) span the members only, since the
-    // workspace root is local-only.
+    // Root tag behavior is not specified in the target-selection rollout. Local and remote
+    // tag operations span selected members only; explicit @root is rejected by selection.
     let mut member_roots: Vec<PathBuf> = Vec::new();
     for member_id in &selected {
         let member = manifest
@@ -40,8 +39,7 @@ where
             .ok_or_else(|| ModelError::new(ErrorCode::MemberNotFound, "member not found"))?;
         member_roots.push(root.join(&member.path));
     }
-    let mut repos: Vec<PathBuf> = vec![root.clone()];
-    repos.extend(member_roots.iter().cloned());
+    let repos: Vec<PathBuf> = member_roots.clone();
 
     match request.op {
         crate::TagOp::Create => {

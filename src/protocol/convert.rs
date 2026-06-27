@@ -136,6 +136,8 @@ impl From<&model::Selection> for generated::Selection {
             all: Some(value.all),
             member_ids: value.member_ids.iter().map(ToString::to_string).collect(),
             paths: value.paths.clone(),
+            targets: Vec::new(),
+            exclude_targets: Vec::new(),
         }
     }
 }
@@ -164,6 +166,7 @@ impl From<&model::ModelError> for generated::GwzError {
             message: value.message.clone(),
             member_id: None,
             member_path: None,
+            target_kind: None,
             detail: None,
         }
     }

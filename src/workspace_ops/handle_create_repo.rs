@@ -149,6 +149,7 @@ where
                 planned: None,
                 state: Some(protocol_state(&manifest_member, &locked)),
                 git_status: None,
+                target_kind: Some(crate::TargetKind::Member),
                 lock_match: Some(crate::LockMatch::Matches),
             }],
         ),
@@ -233,6 +234,7 @@ where
                 planned: None,
                 state: Some(protocol_state(&manifest_member, &locked)),
                 git_status: None,
+                target_kind: Some(crate::TargetKind::Member),
                 lock_match: Some(crate::LockMatch::Matches),
             }],
         ),
@@ -415,6 +417,7 @@ where
             planned,
             state: Some(protocol_state(&next, &state)),
             git_status: None,
+            target_kind: Some(crate::TargetKind::Member),
             lock_match: None,
         },
     })
@@ -469,11 +472,13 @@ fn repo_sync_member_error(
             message: error.message,
             member_id: Some(member.id.clone()),
             member_path: Some(member.path.clone()),
+            target_kind: Some(crate::TargetKind::Member),
             detail: None,
         }),
         planned: None,
         state: None,
         git_status: None,
+        target_kind: Some(crate::TargetKind::Member),
         lock_match: None,
     }
 }

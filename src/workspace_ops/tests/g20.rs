@@ -30,6 +30,8 @@ fn selected_stash_request(
         all: Some(false),
         member_ids: member_ids.iter().map(|value| (*value).to_owned()).collect(),
         paths: Vec::new(),
+        targets: Vec::new(),
+        exclude_targets: Vec::new(),
     });
     request
 }

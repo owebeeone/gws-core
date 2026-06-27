@@ -36,6 +36,44 @@ pub(crate) fn push_selected_member_to_local_bare_remote_succeeds() {
 }
 
 #[test]
+pub(crate) fn push_includes_workspace_root_by_default() {
+    let temp = TempDir::new("push-root-default");
+    let backend = Git2Backend::new();
+    handle_create_workspace(create_workspace_request(temp.path()), "op_create").unwrap();
+    let remote = temp.path().join("root.git");
+    init_bare_main(&remote);
+    backend
+        .add_remote(temp.path(), "origin", remote.to_str().unwrap())
+        .unwrap();
+    set_identity(temp.path());
+    std::fs::write(temp.path().join("root.txt"), "root\n").unwrap();
+    backend.stage_paths(temp.path(), &["root.txt"]).unwrap();
+    let commit = backend.commit(temp.path(), "root", false).unwrap().commit;
+
+    let response = handle_push(
+        &backend,
+        temp.path(),
+        crate::PushRequest {
+            meta: request_meta_with_workspace(),
+            remote: None,
+            refspec: None,
+        },
+        "op_push",
+    )
+    .unwrap();
+
+    assert_eq!(
+        response.response.meta.aggregate_status,
+        crate::AggregateStatus::Ok
+    );
+    let root = response.response.members.single();
+    assert_eq!(root.member_id, "@root");
+    assert_eq!(root.target_kind, Some(crate::TargetKind::Root));
+    assert_eq!(root.status, crate::MemberStatus::Ok);
+    assert_eq!(read_repo_ref(&remote, "refs/heads/main"), Some(commit));
+}
+
+#[test]
 pub(crate) fn push_honors_request_remote_and_refspec() {
     let temp = TempDir::new("push-refspec");
     let backend = Git2Backend::new();
@@ -207,6 +245,7 @@ pub(crate) fn push_request(
 ) -> crate::PushRequest {
     crate::PushRequest {
         meta: crate::RequestMeta {
+            selection: Some(member_only_push_selection()),
             policy: Some(crate::OperationPolicy {
                 unsupported_member,
                 remote: remote.map(ToOwned::to_owned),
@@ -224,9 +263,20 @@ pub(crate) fn push_request_explicit(
     refspec: Option<&str>,
 ) -> crate::PushRequest {
     crate::PushRequest {
-        meta: request_meta_with_workspace(),
+        meta: crate::RequestMeta {
+            selection: Some(member_only_push_selection()),
+            ..request_meta_with_workspace()
+        },
         remote: remote.map(ToOwned::to_owned),
         refspec: refspec.map(ToOwned::to_owned),
+    }
+}
+
+fn member_only_push_selection() -> crate::Selection {
+    crate::Selection {
+        targets: vec!["@all".to_owned()],
+        exclude_targets: vec!["@root".to_owned()],
+        ..Default::default()
     }
 }
 

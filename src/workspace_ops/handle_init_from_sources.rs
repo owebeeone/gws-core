@@ -167,6 +167,7 @@ where
                 planned: None,
                 state: Some(protocol_state(&manifest_member, &locked)),
                 git_status: None,
+                target_kind: Some(crate::TargetKind::Member),
                 lock_match: Some(crate::LockMatch::Matches),
             };
             Ok((manifest_member, locked, response))
@@ -254,6 +255,7 @@ impl InitSourcePlan {
             }),
             state: None,
             git_status: None,
+            target_kind: Some(crate::TargetKind::Member),
             lock_match: None,
         }
     }

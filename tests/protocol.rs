@@ -778,7 +778,8 @@ fn member_error() -> GwzError {
 }
 
 fn taut_command(root: &Path) -> Command {
-    let python = std::env::var("TAUT_PYTHON").unwrap_or_else(|_| "python3".to_owned());
+    let default_python = if cfg!(windows) { "python" } else { "python3" };
+    let python = std::env::var("TAUT_PYTHON").unwrap_or_else(|_| default_python.to_owned());
     taut_command_for_python(root, &python)
 }
 
@@ -814,9 +815,13 @@ fn assert_same(committed: &Path, generated: &Path) {
     let generated_text = fs::read_to_string(generated)
         .unwrap_or_else(|err| panic!("failed to read {}: {err}", generated.display()));
     assert_eq!(
-        committed_text,
-        generated_text,
+        normalize_line_endings(&committed_text),
+        normalize_line_endings(&generated_text),
         "{} is stale",
         committed.display()
     );
+}
+
+fn normalize_line_endings(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\r', "\n")
 }

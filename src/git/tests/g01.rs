@@ -279,10 +279,7 @@ pub(crate) fn pushes_fetches_fast_forwards_and_checks_out_commits() {
         .fast_forward(&clone_path, "main", "refs/remotes/origin/main")
         .unwrap();
     assert_eq!(backend.head(&clone_path).unwrap().commit, Some(second));
-    assert_eq!(
-        fs::read_to_string(clone_path.join("dev-docs/new.md")).unwrap(),
-        "two"
-    );
+    assert_text_eq(clone_path.join("dev-docs/new.md"), "two");
     assert!(!backend.status(&clone_path).unwrap().is_dirty);
 
     backend.checkout_commit(&clone_path, &first).unwrap();
@@ -326,7 +323,7 @@ pub(crate) fn fast_forward_matches_porcelain_merge_ff_only_and_self_verifies() {
         rev_parse(&porc, "HEAD^{tree}")
     );
     assert!(status_porcelain(&prim).trim().is_empty());
-    assert_eq!(fs::read_to_string(prim.join("f.txt")).unwrap(), "b\n");
+    assert_text_eq(prim.join("f.txt"), "b\n");
 }
 
 #[test]
@@ -382,7 +379,7 @@ pub(crate) fn checkout_commit_matches_porcelain_and_self_verifies() {
         rev_parse(&porc, "HEAD^{tree}")
     );
     assert!(status_porcelain(&prim).trim().is_empty());
-    assert_eq!(fs::read_to_string(prim.join("f.txt")).unwrap(), "a\n");
+    assert_text_eq(prim.join("f.txt"), "a\n");
     assert!(backend.head(&prim).unwrap().is_detached);
 }
 
@@ -498,11 +495,8 @@ pub(crate) fn merge_upstream_matches_porcelain_merge_on_clean_diverge() {
         rev_parse(&prim, "HEAD^2"),
         rev_parse(&prim, "refs/heads/feature")
     );
-    assert_eq!(
-        fs::read_to_string(prim.join("feat.txt")).unwrap(),
-        "feature\n"
-    );
-    assert_eq!(fs::read_to_string(prim.join("main.txt")).unwrap(), "main\n");
+    assert_text_eq(prim.join("feat.txt"), "feature\n");
+    assert_text_eq(prim.join("main.txt"), "main\n");
 }
 
 #[test]
@@ -655,7 +649,7 @@ pub(crate) fn reset_hard_matches_porcelain_and_discards_local() {
         rev_parse(&porc, "HEAD^{tree}")
     );
     assert!(status_porcelain(&prim).trim().is_empty());
-    assert_eq!(fs::read_to_string(prim.join("f.txt")).unwrap(), "feature\n");
+    assert_text_eq(prim.join("f.txt"), "feature\n");
     let head = backend.head(&prim).unwrap();
     assert!(!head.is_detached);
     assert_eq!(head.branch.as_deref(), Some("main"));
@@ -799,13 +793,37 @@ pub(crate) fn all_local_refs(repo: &Path) -> String {
 }
 
 pub(crate) fn copy_repo(src: &Path, dst: &Path) {
-    let status = std::process::Command::new("cp")
-        .arg("-R")
-        .arg(src)
-        .arg(dst)
-        .status()
-        .expect("spawn cp");
-    assert!(status.success(), "cp -R failed");
+    if dst.exists() {
+        fs::remove_dir_all(dst).unwrap();
+    }
+    copy_dir_all(src, dst);
+}
+
+fn copy_dir_all(src: &Path, dst: &Path) {
+    fs::create_dir_all(dst).unwrap();
+    for entry in fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let file_type = entry.file_type().unwrap();
+        let target = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir_all(&entry.path(), &target);
+        } else if file_type.is_file() {
+            fs::copy(entry.path(), target).unwrap();
+        } else if file_type.is_symlink() {
+            panic!("copy_repo does not support symlinks: {:?}", entry.path());
+        }
+    }
+}
+
+pub(crate) fn assert_text_eq(path: impl AsRef<Path>, expected: &str) {
+    assert_eq!(read_text_normalized(path), expected);
+}
+
+pub(crate) fn read_text_normalized(path: impl AsRef<Path>) -> String {
+    fs::read_to_string(path)
+        .unwrap()
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
 }
 
 pub(crate) fn rev_parse(repo: &Path, rev: &str) -> String {

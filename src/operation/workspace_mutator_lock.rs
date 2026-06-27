@@ -140,7 +140,8 @@ fn unlock(file: &File) -> io::Result<()> {
     use std::os::windows::io::AsRawHandle;
 
     let mut overlapped = Overlapped::default();
-    let rc = unsafe { unlock_file_ex(file.as_raw_handle(), 0, u32::MAX, u32::MAX, &mut overlapped) };
+    let rc =
+        unsafe { unlock_file_ex(file.as_raw_handle(), 0, u32::MAX, u32::MAX, &mut overlapped) };
     if rc != 0 {
         Ok(())
     } else {

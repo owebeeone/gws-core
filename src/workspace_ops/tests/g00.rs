@@ -366,7 +366,10 @@ pub(crate) fn materialize_lock_keeps_tracking_member_on_head_and_dry_run_does_no
     // detached:false → the member tracks `main`: it stays attached on the branch at the
     // upstream head (`second`), NOT detached at the lagging lock pin (`first`).
     let head = backend.head(&temp.path().join("repos/app")).unwrap();
-    assert!(!head.is_detached, "a tracking member stays attached to its branch");
+    assert!(
+        !head.is_detached,
+        "a tracking member stays attached to its branch"
+    );
     assert_eq!(head.branch.as_deref(), Some("main"));
     assert_eq!(head.commit, Some(second));
 }
@@ -425,7 +428,12 @@ pub(crate) fn materialize_rolls_back_fresh_clones_on_mid_batch_failure() {
         temp.path(),
         vec![
             ("mem_app", "repos/app", fixture.remote_url(), &commit),
-            ("mem_lib", "repos/lib", "/gwz-nonexistent-remote.git", &commit),
+            (
+                "mem_lib",
+                "repos/lib",
+                "/gwz-nonexistent-remote.git",
+                &commit,
+            ),
         ],
     );
 

@@ -79,7 +79,7 @@ fn switch_branch_checks_out_existing_branch_without_moving_it() {
     assert_eq!(result.commit.as_deref(), Some(a.as_str()));
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), a);
     assert_eq!(rev_parse(&repo, "refs/heads/main"), b);
-    assert_eq!(fs::read_to_string(repo.join("f.txt")).unwrap(), "a\n");
+    assert_text_eq(repo.join("f.txt"), "a\n");
     let head = backend.head(&repo).unwrap();
     assert!(!head.is_detached);
     assert_eq!(head.branch.as_deref(), Some("feature"));
@@ -117,7 +117,7 @@ fn switch_branch_rejects_dirty_worktree_without_mutation() {
     assert_eq!(err.code, ErrorCode::GitCommandFailed);
     assert_eq!(rev_parse(&repo, "HEAD"), b);
     assert_eq!(rev_parse(&repo, "refs/heads/feature"), a);
-    assert_eq!(fs::read_to_string(repo.join("f.txt")).unwrap(), "dirty\n");
+    assert_text_eq(repo.join("f.txt"), "dirty\n");
     assert_eq!(backend.head(&repo).unwrap().branch.as_deref(), Some("main"));
 }
 

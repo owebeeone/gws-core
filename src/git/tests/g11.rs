@@ -24,10 +24,7 @@ fn stash_push_tracked_only_changes_and_leaves_worktree_clean() {
         .unwrap();
 
     assert!(!result.object_id.is_empty());
-    assert_eq!(
-        fs::read_to_string(repo.join("tracked.txt")).unwrap(),
-        "base\n"
-    );
+    assert_text_eq(repo.join("tracked.txt"), "base\n");
     assert_eq!(backend.status(&repo).unwrap(), GitStatus::clean());
 }
 
@@ -113,10 +110,7 @@ fn stash_apply_restores_and_keeps_entry() {
         )
         .unwrap();
 
-    assert_eq!(
-        fs::read_to_string(repo.join("tracked.txt")).unwrap(),
-        "changed\n"
-    );
+    assert_text_eq(repo.join("tracked.txt"), "changed\n");
     assert!(
         backend
             .stash_list(&repo)
@@ -162,10 +156,7 @@ fn stash_pop_restores_and_removes_only_matching_gwz_stash_after_indices_move() {
         )
         .unwrap();
 
-    assert_eq!(
-        fs::read_to_string(repo.join("tracked.txt")).unwrap(),
-        "old\n"
-    );
+    assert_text_eq(repo.join("tracked.txt"), "old\n");
     let entries = backend.stash_list(&repo).unwrap();
     assert!(!entries.iter().any(|entry| entry.object_id == old.object_id));
     assert!(entries.iter().any(|entry| entry.object_id == new.object_id));
@@ -244,10 +235,7 @@ fn stash_prefix_fallback_restores_older_bundle_after_newer_indices_change() {
         )
         .unwrap();
 
-    assert_eq!(
-        fs::read_to_string(repo.join("tracked.txt")).unwrap(),
-        "older\n"
-    );
+    assert_text_eq(repo.join("tracked.txt"), "older\n");
 }
 
 #[test]

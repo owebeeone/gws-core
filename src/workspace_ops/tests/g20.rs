@@ -34,6 +34,14 @@ fn selected_stash_request(
     request
 }
 
+fn assert_text_eq(path: impl AsRef<Path>, expected: &str) {
+    let actual = fs::read_to_string(path)
+        .unwrap()
+        .replace("\r\n", "\n")
+        .replace('\r', "\n");
+    assert_eq!(actual, expected);
+}
+
 fn init_two_member_workspace(temp: &Path, backend: &crate::git::Git2Backend) {
     let app = RemoteFixture::new("stash-app-source");
     let lib = RemoteFixture::new("stash-lib-source");
@@ -251,10 +259,7 @@ fn stash_apply_keeps_native_stash_and_marks_applied() {
     )
     .unwrap();
 
-    assert_eq!(
-        fs::read_to_string(member.join("README.md")).unwrap(),
-        "changed\n"
-    );
+    assert_text_eq(member.join("README.md"), "changed\n");
     assert_eq!(
         applied
             .bundles
@@ -292,10 +297,7 @@ fn stash_pop_restores_and_deletes_complete_bundle() {
     )
     .unwrap();
 
-    assert_eq!(
-        fs::read_to_string(member.join("README.md")).unwrap(),
-        "changed\n"
-    );
+    assert_text_eq(member.join("README.md"), "changed\n");
     assert!(backend.stash_list(&member).unwrap().is_empty());
     assert!(!stash::bundle_path(temp.path(), "stash_pop_op").exists());
 }
